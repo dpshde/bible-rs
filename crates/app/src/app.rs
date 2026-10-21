@@ -587,6 +587,9 @@ impl BibleApp {
                 );
                 if let Some((from, to)) = crate::deep_link::selection(&link) {
                     self.reader.select_range(from, to);
+                    // Like a passage page on the web, the selection opens in the middle of the view.
+                    let flash = self.settings.flash_jumps && !self.settings.reduce_motion;
+                    self.reader.jump_centered(r.chapter_idx(), from.verse, to.verse, flash);
                 }
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
