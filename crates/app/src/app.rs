@@ -576,6 +576,20 @@ impl BibleApp {
                     self.reader.set_selection(Some(VerseRef::new(chapter.book(), chapter.chapter(), v)));
                 }
             }
+            Action::OpenLink(link) => {
+                if let Some(id) = link.translation.clone() {
+                    self.apply_one(ctx, Action::SetTranslation(id));
+                }
+                let r = link.reference;
+                self.apply_one(
+                    ctx,
+                    Action::Jump { chapter: r.chapter_idx(), verse: r.verse, flash: r.verse.is_some() },
+                );
+                if let Some((from, to)) = crate::deep_link::selection(&link) {
+                    self.reader.select_range(from, to);
+                }
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
             // From a page, Back returns to the reader.
             Action::Back if !self.pages.reader() => self.pages.open(crate::pages::Page::Reader),
             Action::Back => {
@@ -2169,6 +2183,7 @@ impl eframe::App for BibleApp {
         }
         if self.onboarding.is_none() {
             self.shortcuts(&ctx, &mut actions);
+            actions.extend(crate::deep_link::take().into_iter().map(Action::OpenLink));
         }
         #[cfg(target_os = "macos")]
         if let Some(menu) = &self.menu {

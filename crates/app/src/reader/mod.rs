@@ -172,6 +172,12 @@ impl Reader {
         self.selection = v.map(|v| (v, v));
     }
 
+    /// Selects `from..=to`, as shift-clicking `to` would (a range stays within one chapter).
+    pub fn select_range(&mut self, from: VerseRef, to: VerseRef) {
+        self.selection = Some((from, from));
+        self.select(to, true);
+    }
+
     /// Moves a single-verse selection by `delta` verses (within the chapter, else across).
     pub fn step_selection(&mut self, library: &Library, id: &str, delta: i32) {
         let current = self.selection.map(|(a, b)| if delta > 0 { b } else { a });
