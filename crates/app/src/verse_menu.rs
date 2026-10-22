@@ -55,7 +55,7 @@ impl VerseMenu {
             ),
             item(
                 bookmark,
-                if study.is_bookmarked(first) { "Remove Bookmark" } else { "Bookmark" },
+                if refs.iter().all(|v| study.is_bookmarked(*v)) { "Remove Bookmark" } else { "Bookmark" },
                 "B",
                 Some(Action::ToggleBookmark),
             ),

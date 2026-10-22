@@ -609,6 +609,13 @@ impl BibleApp {
                     verse.filter(|_| flash).map(|v| VerseRef::new(chapter.book(), chapter.chapter(), v));
                 self.reader.set_selection(landed);
             }
+            Action::ShowVerses(first, last) => {
+                let chapter = first.chapter_idx();
+                self.apply_one(ctx, Action::Jump { chapter, verse: Some(first.verse), flash: true });
+                if last != first {
+                    self.reader.selection = Some((first, last));
+                }
+            }
             // From a page, Back returns to the reader.
             Action::Back if !self.pages.reader() => self.pages.open(crate::pages::Page::Reader),
             Action::Back => {
@@ -724,10 +731,22 @@ impl BibleApp {
                 self.apply_one(ctx, Action::EditNote(v));
             }
             Action::ToggleBookmark => {
-                let v = self.selection_or_location()[0];
-                match self.study.toggle_bookmark(v) {
-                    Ok(true) => self.toast(ctx, format!("Bookmarked {v}")),
-                    Ok(false) => self.toast(ctx, format!("Removed bookmark {v}")),
+                // The chosen words (counted in the text they were chosen in), else the selected
+                // verses whole: one bookmark either way.
+                let (span, id) = match self.reader.text_span() {
+                    Some((span, id)) => (span, id.to_string()),
+                    None => {
+                        let refs = self.selection_or_location();
+                        (TextSpan::verses(refs[0], refs[refs.len() - 1]), self.settings.translation.clone())
+                    }
+                };
+                let t = self.chapter_text(&id, span.first.chapter_idx());
+                let text = |r: VerseRef| t.as_ref().and_then(|t| t.find(r)).map(|v| v.text.to_string());
+                let refs = span.refs();
+                let range = bible_core::reference::format_range(refs[0], refs[refs.len() - 1]);
+                match self.study.toggle_bookmark_span(&span, text) {
+                    Ok(true) => self.toast(ctx, format!("Bookmarked {range}")),
+                    Ok(false) => self.toast(ctx, format!("Removed bookmark {range}")),
                     Err(e) => self.toast(ctx, format!("Couldn't save bookmark: {e:#}")),
                 }
             }

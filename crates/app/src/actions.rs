@@ -25,6 +25,8 @@ pub enum Action {
     ToggleParallel,
     /// Do something (a jump), then show it with the parallel translations.
     OpenInParallel(Box<Action>),
+    /// Go to a stretch of verses in one chapter and select them.
+    ShowVerses(VerseRef, VerseRef),
     /// Select a verse and compare it across translations.
     CompareVerse(VerseRef),
     AddParallel(String),

@@ -4,6 +4,7 @@
 use eframe::egui::{FontId, Rect, Sense, Stroke, Ui, pos2, vec2};
 
 use bible_core::VerseRef;
+use bible_core::reference::format_range;
 
 use super::{Empty, Page, PageEnv, Tone, group_label, text};
 use crate::actions::{Action, ExportKind};
@@ -36,9 +37,9 @@ impl State {
         books.dedup();
         let subtitle = match (all.len(), books.len()) {
             (0, _) => "Nothing bookmarked yet".to_string(),
-            (1, _) => "1 verse".to_string(),
-            (n, 1) => format!("{n} verses in 1 book"),
-            (n, b) => format!("{n} verses in {b} books"),
+            (1, _) => "1 bookmark".to_string(),
+            (n, 1) => format!("{n} bookmarks in 1 book"),
+            (n, b) => format!("{n} bookmarks in {b} books"),
         };
         super::title(&painter, p, left, top, "Bookmarks", &subtitle);
         if all.is_empty() {
@@ -81,23 +82,27 @@ impl State {
             self.recent = i == 1;
         }
 
-        // The rows, filtered by the toolbar field.
+        // The rows, filtered by the toolbar field: a bookmark of several verses is one row, with
+        // their text; of part of a verse, the words it covers.
         let q = env.query.trim().to_lowercase();
-        let mut rows: Vec<(VerseRef, i64, String)> = all
+        let mut rows: Vec<(VerseRef, VerseRef, String, i64, String)> = all
             .iter()
-            .map(|(v, b)| (*v, b.created, verse_text(*v)))
-            .filter(|(v, _, text)| {
-                q.is_empty() || v.display().to_lowercase().contains(&q) || text.to_lowercase().contains(&q)
+            .map(|(v, b)| {
+                let last = b.last_ref(*v);
+                (*v, last, format_range(*v, last), b.created, b.excerpt(*v, verse_text))
+            })
+            .filter(|(_, _, label, _, text)| {
+                q.is_empty() || label.to_lowercase().contains(&q) || text.to_lowercase().contains(&q)
             })
             .collect();
         if self.recent {
-            rows.sort_by_key(|(v, created, _)| (std::cmp::Reverse(*created), *v));
+            rows.sort_by_key(|(v, _, _, created, _)| (std::cmp::Reverse(*created), *v));
         }
         let serif = FontId::new(17.0, theme::family(theme::SERIF));
         let width = TEXT_WIDTH.min(right - left - 44.0 - 16.0 - 80.0);
         let mut y = top + 58.0 + 20.0;
         let mut group = None;
-        for (v, created, verse) in rows {
+        for (v, last, label, created, verse) in rows {
             if !self.recent && group != Some(v.book) {
                 group = Some(v.book);
                 let name = t
@@ -107,7 +112,9 @@ impl State {
                 group_label(&painter, p, left, y + 12.0, &name);
                 y += 32.0;
             }
-            let lines = flow(&painter, &verse, &serif, 13.0, width, 2);
+            // Two lines a verse, to three verses' worth.
+            let most = 2 * (usize::from(last.verse - v.verse) + 1).min(3);
+            let lines = flow(&painter, &verse, &serif, 13.0, width, most);
             let h = 12.0 + 22.0 + LINE * lines.len().max(1) as f32 + 12.0;
             let row = Rect::from_min_size(pos2(left, y), vec2(right - left, h));
             let resp = ui.interact(row, ui.id().with(("bookmark", v.key())), Sense::click());
@@ -121,7 +128,7 @@ impl State {
             let glyph = Rect::from_min_size(pos2(left + 14.0, y + 18.0), vec2(16.0, 16.0));
             icons::heavy(|| icons::bookmark(&painter, glyph, p.accent, true));
             let x = left + 44.0;
-            let w = text(&painter, x, y + 12.0, 20.0, &v.display(), theme::ui_semibold(13.0), p.ink, false);
+            let w = text(&painter, x, y + 12.0, 20.0, &label, theme::ui_semibold(13.0), p.ink, false);
             text(&painter, x + w + 8.0, y + 14.0, 16.0, &abbrev, theme::ui_medium(11.0), p.ink_3, false);
             for (k, l) in lines.iter().enumerate() {
                 let base = css_baseline(y + 34.0 + LINE * k as f32, 24.0, 17.0, true);
@@ -133,7 +140,7 @@ impl State {
                 let id = ui.id().with(("bookmark-go", v.key()));
                 if widgets::round_button(ui, p, go, icons::arrow_right, id).clicked() {
                     acted = true;
-                    open(v, actions);
+                    open(v, last, actions);
                 }
                 let bin = go.translate(vec2(30.0, 0.0));
                 let id = ui.id().with(("bookmark-remove", v.key()));
@@ -146,7 +153,7 @@ impl State {
                 text(&painter, right - 16.0, y + 16.0, 16.0, &date, theme::ui_font(12.0), p.ink_3, true);
             }
             if resp.clicked() && !acted {
-                open(v, actions);
+                open(v, last, actions);
             }
             y += h;
         }
@@ -154,8 +161,8 @@ impl State {
     }
 }
 
-fn open(v: VerseRef, actions: &mut Vec<Action>) {
-    actions.push(Action::Jump { chapter: v.chapter_idx(), verse: Some(v.verse), flash: true });
+fn open(first: VerseRef, last: VerseRef, actions: &mut Vec<Action>) {
+    actions.push(Action::ShowVerses(first, last));
 }
 
 /// An empty page: the state optically centred in the page under the toolbar, below the header.

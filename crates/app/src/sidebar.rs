@@ -529,6 +529,8 @@ impl Sidebar {
         /// A row: its verse, colour bar, note and snippet, and which of the verse's highlights.
         struct Row {
             verse: VerseRef,
+            /// The last verse, for a bookmark of several.
+            last: VerseRef,
             bar: Option<Color32>,
             note: Option<String>,
             snippet: String,
@@ -536,6 +538,7 @@ impl Sidebar {
         }
         let row = |verse: VerseRef, note: Option<String>| Row {
             verse,
+            last: verse,
             bar: None,
             note,
             snippet: verse_text(verse),
@@ -545,7 +548,14 @@ impl Sidebar {
             StudyKind::Bookmarks => {
                 let mut b = study.bookmarks();
                 b.sort_by_key(|(v, b)| (std::cmp::Reverse(b.created), *v));
-                b.into_iter().map(|(v, _)| row(v, None)).collect()
+                // Several verses are one row; part of a verse shows the words it covers.
+                b.into_iter()
+                    .map(|(v, b)| Row {
+                        last: b.last_ref(v),
+                        snippet: b.excerpt(v, verse_text),
+                        ..row(v, None)
+                    })
+                    .collect()
             }
             StudyKind::Highlights => {
                 colour_filter(ui, p, &mut self.highlight_filter);
@@ -583,13 +593,17 @@ impl Sidebar {
         let k = StudyKind::ALL.iter().position(|x| *x == kind).unwrap_or(0);
         let total = items.len();
         let shown = if self.study_all[k] { total } else { total.min(RECENT_ITEMS) };
-        for Row { verse: v, bar, note, snippet, start } in items.into_iter().take(shown) {
+        for Row { verse: v, last, bar, note, snippet, start } in items.into_iter().take(shown) {
             let name = t
                 .as_ref()
                 .map(|t| t.meta.ref_name(v.book).to_string())
                 .unwrap_or_else(|| v.book.ref_name().into());
             let item = ListItem {
-                reference: format!("{name} {}:{}", v.chapter, v.verse),
+                reference: if last == v {
+                    format!("{name} {}:{}", v.chapter, v.verse)
+                } else {
+                    format!("{name} {}:{}–{}", v.chapter, v.verse, last.verse)
+                },
                 trailing: abbrev.clone(),
                 bar,
                 note,
@@ -598,7 +612,7 @@ impl Sidebar {
             };
             let resp = list_item(ui, p, &item);
             if resp.clicked() {
-                actions.push(Action::Jump { chapter: v.chapter_idx(), verse: Some(v.verse), flash: true });
+                actions.push(Action::ShowVerses(v, last));
             }
             resp.context_menu(|ui| {
                 let (label, a) = match kind {

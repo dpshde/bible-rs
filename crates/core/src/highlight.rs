@@ -297,6 +297,51 @@ pub fn utf16_from_chars(text: &str, chars: usize) -> usize {
     text.chars().take(chars).map(char::len_utf16).sum()
 }
 
+/// Where a stretch starts in its first verse and ends in its last, as a bookmark keeps it: `start`
+/// 0 from the first verse's start, `end` `None` to the last verse's end, and the words covered of
+/// each verse cut short (`quote` the first's, `quote_end` the last's when it's another), to find
+/// them again in another translation. Spaces at either end are left out; a verse without text is
+/// taken whole.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SpanEnds {
+    pub start: u32,
+    pub end: Option<u32>,
+    pub quote: Option<String>,
+    pub quote_end: Option<String>,
+}
+
+pub fn span_ends(span: &TextSpan, text: impl Fn(VerseRef) -> Option<String>) -> SpanEnds {
+    let refs = span.refs();
+    let (first, last) = (refs[0], refs[refs.len() - 1]);
+    let single = first == last;
+    let mut out = SpanEnds::default();
+    if let Some(t) = text(first) {
+        let chars: Vec<char> = t.chars().collect();
+        let full = trim(&chars, 0..chars.len());
+        let to = if single { span.end.min(chars.len()) } else { chars.len() };
+        let r = trim(&chars, span.start.min(chars.len())..to);
+        if !r.is_empty() {
+            let start = if r.start <= full.start { 0 } else { r.start };
+            let end = (single && r.end < full.end).then_some(r.end as u32);
+            if start > 0 || end.is_some() {
+                out.quote = Some(chars[r].iter().collect());
+            }
+            out.start = start as u32;
+            out.end = end;
+        }
+    }
+    if !single && let Some(t) = text(last) {
+        let chars: Vec<char> = t.chars().collect();
+        let full = trim(&chars, 0..chars.len());
+        let r = trim(&chars, 0..span.end.min(chars.len()));
+        if !r.is_empty() && r.end < full.end {
+            out.end = Some(r.end as u32);
+            out.quote_end = Some(chars[r].iter().collect());
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -493,5 +538,37 @@ mod tests {
         assert_eq!(chars_from_utf16(text, 1), 1);
         assert_eq!(chars_from_utf16(text, 99), 3);
         assert_eq!(utf16_from_chars("Ἰησοῦς", 6), 6);
+    }
+
+    #[test]
+    fn a_span_keeps_where_it_starts_and_ends() {
+        let v = |n| VerseRef::new(BookId(49), 4, n);
+        let texts = |r: VerseRef| match r.verse {
+            11 => Some("I am not saying this out of need.".to_string()),
+            12 => Some("I know how to live humbly.".to_string()),
+            13 => Some("I can do all things.".to_string()),
+            _ => None,
+        };
+        // Whole verses keep no offsets.
+        assert_eq!(span_ends(&TextSpan::verses(v(11), v(13)), texts), SpanEnds::default());
+        // Words of one verse.
+        let one = TextSpan { first: v(12), start: 2, last: v(12), end: 10 };
+        assert_eq!(
+            span_ends(&one, texts),
+            SpanEnds { start: 2, end: Some(10), quote: Some("know how".into()), quote_end: None }
+        );
+        // From the middle of 11 to the middle of 13.
+        let across = TextSpan { first: v(11), start: 9, last: v(13), end: 8 };
+        let e = span_ends(&across, texts);
+        assert_eq!((e.start, e.end), (9, Some(8)));
+        assert_eq!(e.quote.as_deref(), Some("saying this out of need."));
+        assert_eq!(e.quote_end.as_deref(), Some("I can do"));
+        // Running to the end of the last verse is open-ended; no text, the verse whole.
+        let to_end = TextSpan { first: v(11), start: 0, last: v(12), end: 400 };
+        assert_eq!(span_ends(&to_end, texts), SpanEnds::default());
+        assert_eq!(
+            span_ends(&TextSpan { first: v(20), start: 3, last: v(20), end: 5 }, texts),
+            SpanEnds::default()
+        );
     }
 }

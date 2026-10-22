@@ -72,10 +72,85 @@ pub struct Note {
     pub updated: i64,
 }
 
+/// A bookmark: a verse, part of one, or a stretch of verses in one chapter. It's kept under its
+/// first verse; the rest says how far it runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bookmark {
     pub label: String,
     pub created: i64,
+    /// The last verse it covers, in its first verse's chapter (the first itself for one verse).
+    pub last: u8,
+    /// From this char of the first verse's text (0: from its start).
+    pub start: u32,
+    /// To before this char of the last verse's text; `None` to its end.
+    pub end: Option<u32>,
+    /// The words covered of the first verse, where only part of it is.
+    pub quote: Option<String>,
+    /// The words covered of the last verse, when it's another and only part of it is.
+    pub quote_end: Option<String>,
+}
+
+impl Bookmark {
+    /// All of verse `v`.
+    pub fn verse(v: VerseRef, label: &str, created: i64) -> Self {
+        Bookmark {
+            label: label.to_string(),
+            created,
+            last: v.verse,
+            start: 0,
+            end: None,
+            quote: None,
+            quote_end: None,
+        }
+    }
+
+    /// Whole verses, no part of one.
+    pub fn is_whole(&self) -> bool {
+        self.start == 0 && self.end.is_none()
+    }
+
+    /// The verses it covers, kept under `first`.
+    pub fn refs(&self, first: VerseRef) -> Vec<VerseRef> {
+        (first.verse..=self.last.max(first.verse))
+            .map(|n| VerseRef::new(first.book, first.chapter, n))
+            .collect()
+    }
+
+    /// The last verse it covers, kept under `first`.
+    pub fn last_ref(&self, first: VerseRef) -> VerseRef {
+        VerseRef::new(first.book, first.chapter, self.last.max(first.verse))
+    }
+
+    /// The words it covers, kept under `first`, verse texts from `text`: verses cut short show
+    /// the words covered, with an ellipsis.
+    pub fn excerpt(&self, first: VerseRef, text: impl Fn(VerseRef) -> String) -> String {
+        let refs = self.refs(first);
+        let n = refs.len();
+        let pieces: Vec<String> = refs
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let t = text(*v);
+                let part = match (i == 0, i == n - 1) {
+                    (true, true) => (self.start, self.end, self.quote.clone()),
+                    (true, false) => (self.start, None, self.quote.clone()),
+                    (false, true) => (0, self.end, self.quote_end.clone()),
+                    (false, false) => (0, None, None),
+                };
+                if part.0 == 0 && part.1.is_none() {
+                    return t.trim().to_string();
+                }
+                let h = Highlight {
+                    start: part.0,
+                    end: part.1,
+                    quote: part.2,
+                    ..Highlight::whole(HighlightColor::Yellow, 0)
+                };
+                h.excerpt(&t)
+            })
+            .collect();
+        pieces.join(" ")
+    }
 }
 
 pub struct StudyStore {
@@ -108,6 +183,7 @@ CREATE TABLE IF NOT EXISTS notes(
 CREATE TABLE IF NOT EXISTS bookmarks(
     book TEXT NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL,
     label TEXT NOT NULL, created INTEGER NOT NULL,
+    verse_end INTEGER, char_start INTEGER NOT NULL DEFAULT 0, char_end INTEGER, quote TEXT, quote_end TEXT,
     PRIMARY KEY(book, chapter, verse));
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reading(
@@ -193,12 +269,46 @@ fn query<T>(
 /// highlights table gains char offsets, the words covered and when each was last coloured (empty:
 /// when it was made), and the start offset joins its key. Every highlight before was a whole
 /// verse, and stays one.
+///
+/// Version 2 (2026-10): a bookmark covers a stretch of verses in a chapter, or part of a verse. The
+/// bookmarks table gains its last verse (empty: its first), char offsets in its first and last
+/// verses and the words covered of each. Every bookmark before was a whole verse, and stays one.
 #[cfg(feature = "native")]
 fn migrate(conn: &Connection) -> Result<()> {
     let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if version >= 1 {
-        return Ok(());
+    if version < 1 {
+        migrate_v1(conn)?;
     }
+    if version < 2 {
+        let has = |col: &str| -> Result<bool> {
+            let n: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('bookmarks') WHERE name = ?1",
+                [col],
+                |r| r.get(0),
+            )?;
+            Ok(n > 0)
+        };
+        let tx = conn.unchecked_transaction()?;
+        for (col, def) in [
+            ("verse_end", "INTEGER"),
+            ("char_start", "INTEGER NOT NULL DEFAULT 0"),
+            ("char_end", "INTEGER"),
+            ("quote", "TEXT"),
+            ("quote_end", "TEXT"),
+        ] {
+            if !has(col)? {
+                tx.execute_batch(&format!("ALTER TABLE bookmarks ADD COLUMN {col} {def};"))
+                    .context("upgrading the bookmarks table")?;
+            }
+        }
+        tx.pragma_update(None, "user_version", 2)?;
+        tx.commit()?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "native")]
+fn migrate_v1(conn: &Connection) -> Result<()> {
     let has_parts: i64 = conn.query_row(
         "SELECT COUNT(*) FROM pragma_table_info('highlights') WHERE name = 'char_start'",
         [],
@@ -304,9 +414,27 @@ impl StudyStore {
             Ok((verse(r)?, Note { body: r.get(3)?, created: r.get(4)?, updated: r.get(5)? }))
         })?;
         self.notes = notes.into_iter().filter_map(|(v, n)| Some((v?.key(), n))).collect();
-        let bookmarks = query(conn, "SELECT book, chapter, verse, label, created FROM bookmarks", |r| {
-            Ok((verse(r)?, Bookmark { label: r.get(3)?, created: r.get(4)? }))
-        })?;
+        let bookmarks = query(
+            conn,
+            "SELECT book, chapter, verse, label, created, verse_end, char_start, char_end, quote, quote_end
+             FROM bookmarks",
+            |r| {
+                let v: i64 = r.get(2)?;
+                let last = r.get::<_, Option<i64>>(5)?.unwrap_or(v).max(v);
+                Ok((
+                    verse(r)?,
+                    Bookmark {
+                        label: r.get(3)?,
+                        created: r.get(4)?,
+                        last: u8::try_from(last).unwrap_or(u8::MAX),
+                        start: r.get(6)?,
+                        end: r.get(7)?,
+                        quote: r.get(8)?,
+                        quote_end: r.get(9)?,
+                    },
+                ))
+            },
+        )?;
         self.bookmarks = bookmarks.into_iter().filter_map(|(v, b)| Some((v?.key(), b))).collect();
         let reading = query(
             conn,
@@ -427,12 +555,24 @@ impl StudyStore {
         self.notes.get(&v.key())
     }
 
-    pub fn bookmark(&self, v: VerseRef) -> Option<&Bookmark> {
-        self.bookmarks.get(&v.key())
+    /// The bookmark that covers verse `v` (any part of it), with the verse it's kept under.
+    pub fn bookmark_at(&self, v: VerseRef) -> Option<(VerseRef, &Bookmark)> {
+        let chapter = VerseRef::new(v.book, v.chapter, 0).key();
+        self.bookmarks
+            .range(chapter..=v.key())
+            .rev()
+            .filter_map(|(k, b)| Some((VerseRef::from_key(*k)?, b)))
+            .find(|(first, b)| b.last_ref(*first) >= v)
     }
 
+    /// The bookmark that covers verse `v`.
+    pub fn bookmark(&self, v: VerseRef) -> Option<&Bookmark> {
+        self.bookmark_at(v).map(|(_, b)| b)
+    }
+
+    /// Whether a bookmark covers verse `v`.
     pub fn is_bookmarked(&self, v: VerseRef) -> bool {
-        self.bookmarks.contains_key(&v.key())
+        self.bookmark_at(v).is_some()
     }
 
     /// Highlights a whole verse in `color`, replacing what it had, or (with `None`) clears all of
@@ -551,35 +691,122 @@ impl StudyStore {
         Ok(())
     }
 
+    /// Bookmarks verse `v` (relabelling the bookmark that covers it, if one does), or with `None`
+    /// removes the bookmark that covers it, all of it.
     pub fn set_bookmark(&mut self, v: VerseRef, label: Option<&str>) -> Result<()> {
-        match label {
-            Some(label) => self.put_bookmark(v, label, now())?,
-            None => {
-                #[cfg(feature = "native")]
-                self.exec(
-                    "DELETE FROM bookmarks WHERE book = ?1 AND chapter = ?2 AND verse = ?3",
-                    params![v.book.info().code, v.chapter, v.verse],
-                )?;
-                self.bookmarks.remove(&v.key());
+        let covering = self.bookmark_at(v).map(|(first, b)| (first, b.clone()));
+        match (label, covering) {
+            (Some(label), Some((first, b))) => {
+                self.put_bookmark(first, Bookmark { label: label.to_string(), ..b })?
             }
+            (Some(label), None) => self.put_bookmark(v, Bookmark::verse(v, label, now()))?,
+            (None, Some((first, _))) => self.delete_bookmark(first)?,
+            (None, None) => {}
         }
         self.generation += 1;
         Ok(())
     }
 
-    /// A verse already bookmarked keeps when it was first bookmarked.
-    fn put_bookmark(&mut self, v: VerseRef, label: &str, created: i64) -> Result<()> {
-        #[cfg(feature = "native")]
-        self.exec(
-            "INSERT INTO bookmarks(book, chapter, verse, label, created) VALUES(?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(book, chapter, verse) DO UPDATE SET label = excluded.label",
-            params![v.book.info().code, v.chapter, v.verse, label, created],
-        )?;
-        let created = self.bookmarks.get(&v.key()).map_or(created, |b| b.created);
-        self.bookmarks.insert(v.key(), Bookmark { label: label.to_string(), created });
+    /// Bookmarks a stretch (whole verses, or words from one verse to another), verse texts from
+    /// `text` in the offsets the span was counted in. Bookmarks it overlaps give way to it; it
+    /// keeps the label and date of the first of them.
+    pub fn bookmark_span(
+        &mut self,
+        span: &TextSpan,
+        text: impl Fn(VerseRef) -> Option<String>,
+    ) -> Result<()> {
+        let refs = span.refs();
+        let (first, last) = (refs[0], refs[refs.len() - 1]);
+        let ends = highlight::span_ends(span, text);
+        let overlapping = self.bookmarks_over(&refs);
+        let kept = overlapping.first().and_then(|k| self.bookmarks.get(&k.key()));
+        let label = kept.map(|b| b.label.clone()).unwrap_or_default();
+        let created = kept.map_or_else(now, |b| b.created);
+        self.transaction(|s| {
+            for k in &overlapping {
+                s.delete_bookmark(*k)?;
+            }
+            s.put_bookmark(
+                first,
+                Bookmark {
+                    label,
+                    created,
+                    last: last.verse,
+                    start: ends.start,
+                    end: ends.end,
+                    quote: ends.quote,
+                    quote_end: ends.quote_end,
+                },
+            )
+        })?;
+        self.generation += 1;
         Ok(())
     }
 
+    /// Bookmarks a stretch, or, when bookmarks already cover each of its verses, removes them:
+    /// returns whether it's bookmarked now.
+    pub fn toggle_bookmark_span(
+        &mut self,
+        span: &TextSpan,
+        text: impl Fn(VerseRef) -> Option<String>,
+    ) -> Result<bool> {
+        let refs = span.refs();
+        if refs.iter().all(|v| self.is_bookmarked(*v)) {
+            let overlapping = self.bookmarks_over(&refs);
+            self.transaction(|s| overlapping.iter().try_for_each(|k| s.delete_bookmark(*k)))?;
+            self.generation += 1;
+            return Ok(false);
+        }
+        self.bookmark_span(span, text)?;
+        Ok(true)
+    }
+
+    /// Where the bookmarks that cover any of `refs` are kept, in order.
+    fn bookmarks_over(&self, refs: &[VerseRef]) -> Vec<VerseRef> {
+        let mut out: Vec<VerseRef> =
+            refs.iter().filter_map(|v| self.bookmark_at(*v).map(|(k, _)| k)).collect();
+        out.dedup();
+        out
+    }
+
+    fn delete_bookmark(&mut self, first: VerseRef) -> Result<()> {
+        #[cfg(feature = "native")]
+        self.exec(
+            "DELETE FROM bookmarks WHERE book = ?1 AND chapter = ?2 AND verse = ?3",
+            params![first.book.info().code, first.chapter, first.verse],
+        )?;
+        self.bookmarks.remove(&first.key());
+        Ok(())
+    }
+
+    /// Keeps a bookmark under verse `first`, replacing what was kept there.
+    fn put_bookmark(&mut self, first: VerseRef, b: Bookmark) -> Result<()> {
+        #[cfg(feature = "native")]
+        self.exec(
+            "INSERT INTO bookmarks(book, chapter, verse, label, created, verse_end, char_start, char_end, quote, quote_end)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(book, chapter, verse) DO UPDATE SET label = excluded.label, created = excluded.created,
+               verse_end = excluded.verse_end, char_start = excluded.char_start, char_end = excluded.char_end,
+               quote = excluded.quote, quote_end = excluded.quote_end",
+            params![
+                first.book.info().code,
+                first.chapter,
+                first.verse,
+                b.label,
+                b.created,
+                (b.last > first.verse).then_some(b.last),
+                b.start,
+                b.end,
+                b.quote,
+                b.quote_end
+            ],
+        )?;
+        self.bookmarks.insert(first.key(), b);
+        Ok(())
+    }
+
+    /// Bookmarks verse `v`, or removes the bookmark that covers it: returns whether it's
+    /// bookmarked now.
     pub fn toggle_bookmark(&mut self, v: VerseRef) -> Result<bool> {
         let on = !self.is_bookmarked(v);
         self.set_bookmark(v, on.then_some(""))?;
@@ -802,10 +1029,23 @@ impl StudyStore {
             bookmarks: self
                 .bookmarks()
                 .into_iter()
-                .map(|(v, b)| ExportBookmark {
-                    verse: entry(v),
-                    label: b.label.clone(),
-                    created: rfc3339(b.created),
+                .map(|(v, b)| {
+                    let mut verse = entry(v);
+                    let last = b.last_ref(v);
+                    if last != v || !b.is_whole() {
+                        verse.reference = crate::reference::format_range(v, last);
+                        verse.text = Some(b.excerpt(v, |r| text(r).unwrap_or_default()));
+                    }
+                    ExportBookmark {
+                        verse,
+                        label: b.label.clone(),
+                        created: rfc3339(b.created),
+                        through: (last != v).then_some(last.verse),
+                        start: b.start,
+                        end: b.end,
+                        quote: b.quote.clone(),
+                        quote_end: b.quote_end.clone(),
+                    }
                 })
                 .collect(),
         };
@@ -866,10 +1106,17 @@ impl StudyStore {
         if !bookmarks.is_empty() {
             let _ = writeln!(md, "## Bookmarks\n");
             for (v, b) in bookmarks {
-                if b.label.is_empty() {
-                    let _ = writeln!(md, "- **{v}**");
+                let r = crate::reference::format_range(v, b.last_ref(v));
+                // Part of a verse: the words it covers.
+                let words = if b.is_whole() {
+                    String::new()
                 } else {
-                    let _ = writeln!(md, "- **{v}** — {}", b.label);
+                    format!(" {}", b.excerpt(v, |r| text(r).unwrap_or_default()))
+                };
+                if b.label.is_empty() {
+                    let _ = writeln!(md, "- **{r}**{words}");
+                } else {
+                    let _ = writeln!(md, "- **{r}** — {}{words}", b.label);
                 }
             }
             md.push('\n');
@@ -966,7 +1213,25 @@ impl StudyStore {
                 s.put_note(*v, &n.note, date(&n.created), date(&n.updated))?;
             }
             for (v, b) in &bookmarks {
-                s.put_bookmark(*v, &b.label, date(&b.created))?;
+                // Kept under its first verse, a bookmark replaces any it overlaps.
+                let last = b.through.unwrap_or(v.verse).max(v.verse);
+                let refs: Vec<VerseRef> =
+                    (v.verse..=last).map(|n| VerseRef::new(v.book, v.chapter, n)).collect();
+                for k in s.bookmarks_over(&refs) {
+                    s.delete_bookmark(k)?;
+                }
+                s.put_bookmark(
+                    *v,
+                    Bookmark {
+                        label: b.label.clone(),
+                        created: date(&b.created),
+                        last,
+                        start: b.start,
+                        end: b.end,
+                        quote: b.quote.clone(),
+                        quote_end: b.quote_end.clone(),
+                    },
+                )?;
             }
             for r in &doc.history {
                 let Some(book) = BookId::from_code(&r.book) else { continue };
@@ -1121,6 +1386,20 @@ struct ExportBookmark {
     verse: ExportVerse,
     label: String,
     created: String,
+    /// The last verse, when it runs past its first (exports before 2026-10 have one verse each).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    through: Option<u8>,
+    /// Part of a verse: from this char of the first verse's text.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    start: u32,
+    /// To before this char of the last verse's text; left out, to its end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    end: Option<u32>,
+    /// The words covered of the first verse, and of the last, where cut short.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    quote: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    quote_end: Option<String>,
 }
 
 /// Unix seconds → `YYYY-MM-DDTHH:MM:SSZ` (proleptic Gregorian, UTC).
@@ -1420,7 +1699,7 @@ mod tests {
         let rows: i64 = conn.query_row("SELECT COUNT(*) FROM highlights", [], |r| r.get(0)).unwrap();
         assert_eq!(rows, 4);
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
         drop(conn);
         // Parts of verses save in the new table, and opening again changes nothing.
         s.highlight_span(
@@ -1584,5 +1863,165 @@ mod tests {
         for t in [0, 951_782_400, 1_791_158_399, 4_102_444_800] {
             assert_eq!(parse_rfc3339(&rfc3339(t)), Some(t));
         }
+    }
+
+    fn phil(n: u8) -> VerseRef {
+        VerseRef::new(BookId(49), 4, n)
+    }
+
+    fn phil_text(v: VerseRef) -> Option<String> {
+        Some(
+            match v.verse {
+                11 => "I am not saying this out of need.",
+                12 => "I know how to live humbly.",
+                13 => "I can do all things.",
+                14 => "Nevertheless, you have done well.",
+                _ => return None,
+            }
+            .to_string(),
+        )
+    }
+
+    #[test]
+    fn a_bookmark_covers_a_stretch_of_verses() {
+        let mut s = StudyStore::open_in_memory().unwrap();
+        s.bookmark_span(&TextSpan::verses(phil(11), phil(13)), phil_text).unwrap();
+        assert_eq!(s.counts().2, 1, "one bookmark, three verses");
+        assert!((11..=13).all(|n| s.is_bookmarked(phil(n))) && !s.is_bookmarked(phil(14)));
+        let (first, b) = s.bookmark_at(phil(12)).unwrap();
+        assert_eq!((first, b.last_ref(first), b.is_whole()), (phil(11), phil(13), true));
+        assert_eq!(
+            b.excerpt(first, |v| phil_text(v).unwrap()),
+            "I am not saying this out of need. I know how to live humbly. I can do all things."
+        );
+        // Removing it from any of its verses removes all of it.
+        s.set_bookmark(phil(13), None).unwrap();
+        assert!(s.bookmarks().is_empty());
+
+        // A bookmark over others takes their place, keeping the first's label and date.
+        s.bookmark_span(&TextSpan::verses(phil(11), phil(12)), phil_text).unwrap();
+        s.set_bookmark(phil(11), Some("content")).unwrap();
+        let made = s.bookmark(phil(11)).unwrap().created;
+        s.set_bookmark(phil(14), Some("")).unwrap();
+        s.bookmark_span(&TextSpan::verses(phil(12), phil(14)), phil_text).unwrap();
+        let all = s.bookmarks();
+        assert_eq!(all.len(), 1);
+        assert_eq!(
+            (all[0].0, all[0].1.last, all[0].1.label.as_str(), all[0].1.created),
+            (phil(12), 14, "content", made)
+        );
+
+        // Toggling a stretch that's covered removes what covers it; otherwise bookmarks it.
+        assert!(!s.toggle_bookmark_span(&TextSpan::verses(phil(13), phil(13)), phil_text).unwrap());
+        assert!(s.bookmarks().is_empty());
+        assert!(s.toggle_bookmark_span(&TextSpan::verses(phil(11), phil(13)), phil_text).unwrap());
+        assert_eq!(s.bookmarks().len(), 1);
+        // And one verse, as B always has.
+        assert!(!s.toggle_bookmark(phil(12)).unwrap());
+        assert!(s.toggle_bookmark(phil(12)).unwrap());
+        assert_eq!(s.bookmark_at(phil(12)).map(|(k, b)| (k, b.last)), Some((phil(12), 12)));
+    }
+
+    #[test]
+    fn a_bookmark_of_words_keeps_them_and_persists() {
+        let dir = std::env::temp_dir().join(format!("bible-rs-bm-words-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        {
+            let mut s = StudyStore::open(&path).unwrap();
+            // "know how" in 12; and from "saying" in 11 to "I can do" in 13... kept apart in 4 and 2.
+            s.bookmark_span(&TextSpan { first: phil(12), start: 2, last: phil(12), end: 10 }, phil_text)
+                .unwrap();
+            let b = s.bookmark(phil(12)).unwrap();
+            assert_eq!(b.excerpt(phil(12), |v| phil_text(v).unwrap()), "…know how…");
+        }
+        let mut s = StudyStore::open(&path).unwrap();
+        let b = s.bookmark(phil(12)).unwrap().clone();
+        assert_eq!((b.start, b.end, b.quote.as_deref(), b.last), (2, Some(10), Some("know how"), 12));
+        s.set_bookmark(phil(12), None).unwrap();
+        let across = TextSpan { first: phil(11), start: 9, last: phil(13), end: 8 };
+        s.bookmark_span(&across, phil_text).unwrap();
+        drop(s);
+        let s = StudyStore::open(&path).unwrap();
+        let (first, b) = s.bookmark_at(phil(13)).unwrap();
+        assert_eq!(first, phil(11));
+        assert_eq!(
+            b.excerpt(first, |v| phil_text(v).unwrap()),
+            "…saying this out of need. I know how to live humbly. I can do…"
+        );
+        // In another text the words are found where they are.
+        let other = |v: VerseRef| match v.verse {
+            11 => "Not that I am saying this out of need.".to_string(),
+            v => phil_text(VerseRef::new(BookId(49), 4, v)).unwrap(),
+        };
+        assert!(b.excerpt(first, other).starts_with("…saying this out of need."));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bookmark_stretches_round_trip_through_json() {
+        let mut a = StudyStore::open_in_memory().unwrap();
+        a.bookmark_span(&TextSpan::verses(phil(11), phil(13)), phil_text).unwrap();
+        a.set_bookmark(phil(11), Some("content")).unwrap();
+        a.bookmark_span(&TextSpan { first: phil(14), start: 0, last: phil(14), end: 12 }, phil_text).unwrap();
+        a.set_bookmark(jn3(16), Some("")).unwrap();
+        let json = a.export_json("kjv", phil_text).unwrap();
+        assert!(json.contains("\"through\": 13") && json.contains("Philippians 4:11–13"));
+        let mut b = StudyStore::open_in_memory().unwrap();
+        assert_eq!(b.import_json(&json).unwrap().2, 3);
+        let shown =
+            |s: &StudyStore| s.bookmarks().into_iter().map(|(v, b)| (v, b.clone())).collect::<Vec<_>>();
+        assert_eq!(shown(&a), shown(&b));
+        // An export from before keeps one verse a bookmark.
+        let mut old: serde_json::Value = serde_json::from_str(&json).unwrap();
+        for b in old["bookmarks"].as_array_mut().unwrap() {
+            b.as_object_mut().unwrap().remove("through");
+        }
+        let old = old.to_string();
+        let mut c = StudyStore::open_in_memory().unwrap();
+        c.import_json(&old).unwrap();
+        assert_eq!(c.bookmark_at(phil(12)), None);
+        assert_eq!(c.bookmark(phil(11)).map(|b| b.last), Some(11));
+        let md = a.export_markdown("kjv", phil_text);
+        assert!(md.contains("- **Philippians 4:11–13** — content"), "{md}");
+        assert!(md.contains("- **Philippians 4:14** Nevertheless…"), "{md}");
+    }
+
+    #[test]
+    fn migrates_whole_verse_bookmarks() {
+        let dir = std::env::temp_dir().join(format!("bible-rs-migrate-bm-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        {
+            // A file from version 1: bookmarks a verse each.
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE bookmarks(
+                     book TEXT NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL,
+                     label TEXT NOT NULL, created INTEGER NOT NULL,
+                     PRIMARY KEY(book, chapter, verse));
+                 INSERT INTO bookmarks VALUES('PHP', 4, 13, 'strength', 1000), ('JHN', 3, 16, '', 2000);
+                 PRAGMA user_version = 1;",
+            )
+            .unwrap();
+        }
+        let mut s = StudyStore::open(&path).unwrap();
+        let b = s.bookmark(phil(13)).unwrap().clone();
+        assert_eq!(b, Bookmark::verse(phil(13), "strength", 1000));
+        assert_eq!(s.bookmark(jn3(16)), Some(&Bookmark::verse(jn3(16), "", 2000)));
+        assert!(!s.is_bookmarked(phil(14)));
+        let conn = Connection::open(&path).unwrap();
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, 2);
+        drop(conn);
+        // The new columns take stretches, and opening again changes nothing.
+        s.bookmark_span(&TextSpan::verses(phil(11), phil(13)), phil_text).unwrap();
+        drop(s);
+        let s = StudyStore::open(&path).unwrap();
+        let (first, b) = s.bookmark_at(phil(12)).unwrap();
+        assert_eq!((first, b.last, b.label.as_str(), b.created), (phil(11), 13, "strength", 1000));
+        assert_eq!(s.counts().2, 2);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
