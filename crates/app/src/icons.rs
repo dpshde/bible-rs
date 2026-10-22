@@ -187,16 +187,32 @@ pub fn disclosure(p: &Painter, r: Rect, c: Color32) {
     g.line(&[(4.5, 3.0), (7.5, 6.0), (4.5, 9.0)]);
 }
 
-/// A filled pushpin on the disclosure chevrons' 12-unit grid: a pinned book's mark.
-pub fn pin_fill(p: &Painter, r: Rect, c: Color32) {
+/// A pushpin on the disclosure chevrons' 12-unit grid; `filled` for a pinned book.
+pub fn pin(p: &Painter, r: Rect, c: Color32, filled: bool) {
     let g = Grid::with(p, r, c, 12.0, 1.0);
-    // Head, body and flared collar, filled and outlined so the corners round off.
+    // Head, body and flared collar.
     let head = [(4.0, 1.0), (8.0, 1.0), (8.0, 2.5), (4.0, 2.5)];
     let body = [(4.6, 2.5), (7.4, 2.5), (8.0, 6.25), (4.0, 6.25)];
     let collar = [(4.0, 6.25), (8.0, 6.25), (9.25, 7.75), (2.75, 7.75)];
-    for part in [&head, &body, &collar] {
-        g.fill(part);
-        g.closed(part);
+    if filled {
+        // Filled and outlined, so the corners round off.
+        for part in [&head, &body, &collar] {
+            g.fill(part);
+            g.closed(part);
+        }
+    } else {
+        g.closed(&[
+            (4.0, 1.0),
+            (8.0, 1.0),
+            (8.0, 2.5),
+            (7.4, 2.5),
+            (8.0, 6.25),
+            (9.25, 7.75),
+            (2.75, 7.75),
+            (4.0, 6.25),
+            (4.6, 2.5),
+            (4.0, 2.5),
+        ]);
     }
     // The needle.
     g.line(&[(6.0, 7.75), (6.0, 11.0)]);

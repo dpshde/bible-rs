@@ -13,6 +13,7 @@ use egui_kittest::Harness;
 
 const JOHN: BookId = BookId(42);
 const PHILIPPIANS: BookId = BookId(49);
+const MARK: BookId = BookId(40);
 
 /// Where the visible text `label` is drawn (its bounds), top to bottom.
 fn find_rects(h: &Harness<'_, BibleApp>, label: &str) -> Vec<egui::Rect> {
@@ -40,14 +41,14 @@ fn find(h: &Harness<'_, BibleApp>, label: &str) -> Vec<Pos2> {
     find_rects(h, label).iter().map(|r| r.center()).collect()
 }
 
-/// Filled shapes (the pin's parts) drawn inside `area`.
-fn fills_in(h: &Harness<'_, BibleApp>, area: egui::Rect) -> usize {
-    fn walk(shape: &Shape, area: egui::Rect, n: &mut usize) {
+/// Closed shapes drawn inside `area`, filled (`true`: a filled pin's parts) or outlined.
+fn closed_in(h: &Harness<'_, BibleApp>, area: egui::Rect, filled: bool) -> usize {
+    fn walk(shape: &Shape, area: egui::Rect, filled: bool, n: &mut usize) {
         match shape {
-            Shape::Vec(v) => v.iter().for_each(|s| walk(s, area, n)),
+            Shape::Vec(v) => v.iter().for_each(|s| walk(s, area, filled, n)),
             Shape::Path(p)
                 if p.closed
-                    && p.fill != egui::Color32::TRANSPARENT
+                    && (p.fill != egui::Color32::TRANSPARENT) == filled
                     && p.points.iter().all(|q| area.contains(*q)) =>
             {
                 *n += 1;
@@ -57,9 +58,13 @@ fn fills_in(h: &Harness<'_, BibleApp>, area: egui::Rect) -> usize {
     }
     let mut n = 0;
     for c in &h.output().shapes {
-        walk(&c.shape, area, &mut n);
+        walk(&c.shape, area, filled, &mut n);
     }
     n
+}
+
+fn fills_in(h: &Harness<'_, BibleApp>, area: egui::Rect) -> usize {
+    closed_in(h, area, true)
 }
 
 fn one(h: &Harness<'_, BibleApp>, label: &str) -> Pos2 {
@@ -185,5 +190,28 @@ fn a_pinned_book_sits_above_the_testaments() {
     let john = find(&h, "John")[0];
     click(&mut h, pin_at(john.y), PointerButton::Primary);
     assert!(h.state().settings.pinned().is_empty());
+
+    // Book rows in the testaments show an outline pin on hover (none otherwise), and clicking
+    // it pins the book without opening its chapters or moving the reader.
+    h.event(Event::PointerMoved(egui::pos2(700.0, 400.0)));
+    h.run_steps(4);
+    let mark = one(&h, "Mark");
+    assert_eq!(closed_in(&h, lane(mark.y), false) + fills_in(&h, lane(mark.y)), 0, "no pin until hovered");
+    h.event(Event::PointerMoved(mark));
+    h.run_steps(4);
+    assert_eq!(closed_in(&h, lane(mark.y), false), 1, "an outline pin on hover");
+    assert_eq!(fills_in(&h, lane(mark.y)), 0);
+    let here = h.state().reader.location.0;
+    click(&mut h, pin_at(mark.y), PointerButton::Primary);
+    assert_eq!(h.state().settings.pinned(), [MARK]);
+    assert_eq!(h.state().reader.location.0, here);
+    let marks = find(&h, "Mark");
+    assert_eq!(marks.len(), 2, "pinned above, still in the New Testament: {marks:?}");
+    assert!(one(&h, "Luke").y - marks[1].y < 40.0, "Mark's chapters stay closed");
+    assert!(marks[0].y < one(&h, "Old Testament").y);
+    // Pinned, its testament row keeps a filled pin after the pointer leaves.
+    h.event(Event::PointerMoved(egui::pos2(700.0, 400.0)));
+    h.run_steps(4);
+    assert!(fills_in(&h, lane(marks[1].y)) >= 3, "a filled pin on the testament row");
     let _ = std::fs::remove_dir_all(&dir);
 }
