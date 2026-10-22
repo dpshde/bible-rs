@@ -949,6 +949,32 @@ impl BibleApp {
                     self.toast(ctx, format!("{e:#}"));
                 }
             }
+            Action::BookmarkVerses(refs) => {
+                let mut added = 0;
+                let mut first = None;
+                for v in refs {
+                    if self.study.is_bookmarked(v) {
+                        first.get_or_insert(v);
+                        continue;
+                    }
+                    match self.study.set_bookmark(v, Some("")) {
+                        Ok(()) => {
+                            added += 1;
+                            first.get_or_insert(v);
+                        }
+                        Err(e) => {
+                            self.toast(ctx, format!("Couldn't save bookmark: {e:#}"));
+                            return;
+                        }
+                    }
+                }
+                match (added, first) {
+                    (0, Some(v)) => self.toast(ctx, format!("Already bookmarked {v}")),
+                    (1, Some(v)) => self.toast(ctx, format!("Bookmarked {v}")),
+                    (n, Some(v)) if n > 1 => self.toast(ctx, format!("Bookmarked {n} verses from {v}")),
+                    _ => {}
+                }
+            }
             Action::ShowShortcuts => self.shortcuts_open = !self.shortcuts_open,
             Action::CheckForUpdates => crate::updater::check_for_updates(),
             Action::ScrollLines(n) => {
@@ -965,7 +991,8 @@ impl BibleApp {
     }
 
     /// One `BIBLE_RS_DEMO` step: `jump:<reference>`, `select:<reference>`, `palette:<query>`,
-    /// `search:<query>`, `scope:<ot|nt>`, `step:<n>` (search results), `offline:<reference>`, `note:<reference>`, `compare:<reference>`, `study:<bookmarks|highlights|notes>`,
+    /// `bookmark:<reference>`, `search:<query>`, `scope:<ot|nt>`, `step:<n>` (search results),
+    /// `offline:<reference>`, `note:<reference>`, `compare:<reference>`, `study:<bookmarks|highlights|notes>`,
     /// `settings:<reading|translations|data>`, `plans-tab:<active|browse|completed>`,
     /// `size:<width>x<height>` (the window's inner size).
     fn demo_step(&mut self, ctx: &egui::Context, step: &str, actions: &mut Vec<Action>) {
@@ -982,6 +1009,13 @@ impl BibleApp {
                 }
             }
             "select" => self.reader.set_selection(verse()),
+            "bookmark" => {
+                if let Some(r) = bible_core::reference::parse(arg)
+                    && let Some(refs) = crate::palette::bookmark_verses(r)
+                {
+                    actions.push(Action::BookmarkVerses(refs));
+                }
+            }
             "palette" => self.palette = Some(CommandPalette::with_query(arg)),
             "search" => actions.push(Action::OpenSearch(Some(arg.to_string()))),
             "step" => actions.push(Action::SearchStep(arg.parse().unwrap_or(1))),

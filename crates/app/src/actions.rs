@@ -66,6 +66,8 @@ pub enum Action {
     ClearReading(i64),
     /// Bookmark a verse, or remove its bookmark.
     ToggleBookmarkAt(VerseRef),
+    /// Add bookmarks for these verses (already-bookmarked ones stay).
+    BookmarkVerses(Vec<VerseRef>),
     /// Copy the selected verses' text; `Copy` adds the reference.
     CopyText,
     Copy,

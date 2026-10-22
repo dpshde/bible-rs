@@ -83,6 +83,8 @@ export type Action =
 	| { type: 'toggleBookmark' }
 	| { type: 'toggleBookmarkAt'; verse: VerseRef }
 	| { type: 'removeBookmark'; verse: VerseRef }
+	/** Add bookmarks for these verses (already-bookmarked ones stay). */
+	| { type: 'bookmarkVerses'; verses: VerseRef[] }
 	/** One highlight of a verse: the one a study item's `start` names. */
 	| { type: 'removeHighlight'; verse: VerseRef; start: number }
 	| { type: 'removeNote'; verse: VerseRef }
@@ -916,6 +918,18 @@ export class ReadApp {
 			case 'toggleBookmarkAt':
 				this.study((c) => c.bible.toggleBookmark(a.verse));
 				break;
+			case 'bookmarkVerses': {
+				const refs = a.verses;
+				if (!refs.length) break;
+				const ok = this.study((c) => {
+					for (const v of refs) c.bible.setBookmark(v, '');
+				}, "Couldn't save bookmark");
+				if (ok !== undefined) {
+					if (refs.length === 1) this.toastNow(`Bookmarked ${this.label(refs[0])}`);
+					else this.toastNow(`Bookmarked ${refs.length} verses from ${this.label(refs[0])}`);
+				}
+				break;
+			}
 			case 'removeBookmark':
 				this.study((c) => c.bible.setBookmark(a.verse, null));
 				break;
