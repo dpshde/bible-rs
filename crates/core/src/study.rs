@@ -397,6 +397,35 @@ impl StudyStore {
         self.highlights.get(&v.key()).map_or(&[], Vec::as_slice)
     }
 
+    /// Whether the verse has any highlight (whole or part of its text).
+    pub fn is_highlighted(&self, v: VerseRef) -> bool {
+        !self.highlight_parts(v).is_empty()
+    }
+
+    /// Inclusive run of consecutive same-chapter verses that each have at least one highlight,
+    /// expanding from `v`. `None` when `v` itself has none. A gap (an unhighlighted verse) ends
+    /// the run; partial highlights count the same as whole-verse ones.
+    pub fn highlight_run(&self, v: VerseRef) -> Option<(VerseRef, VerseRef)> {
+        if !self.is_highlighted(v) {
+            return None;
+        }
+        let mut lo = v.verse;
+        let mut hi = v.verse;
+        while lo > 1 && self.is_highlighted(VerseRef::new(v.book, v.chapter, lo - 1)) {
+            lo -= 1;
+        }
+        while hi < u8::MAX && self.is_highlighted(VerseRef::new(v.book, v.chapter, hi + 1)) {
+            hi += 1;
+        }
+        Some((VerseRef::new(v.book, v.chapter, lo), VerseRef::new(v.book, v.chapter, hi)))
+    }
+
+    /// Every verse in [`Self::highlight_run`], in order.
+    pub fn highlight_run_verses(&self, v: VerseRef) -> Option<Vec<VerseRef>> {
+        let (a, b) = self.highlight_run(v)?;
+        Some((a.verse..=b.verse).map(|n| VerseRef::new(a.book, a.chapter, n)).collect())
+    }
+
     /// What a verse whose text is `text` shows: its coloured char ranges, in order.
     pub fn highlight_ranges(&self, v: VerseRef, text: &str) -> Vec<(std::ops::Range<usize>, HighlightColor)> {
         highlight::ranges(self.highlight_parts(v), text)
@@ -1584,5 +1613,55 @@ mod tests {
         for t in [0, 951_782_400, 1_791_158_399, 4_102_444_800] {
             assert_eq!(parse_rfc3339(&rfc3339(t)), Some(t));
         }
+    }
+
+    #[test]
+    fn highlight_run_expands_across_consecutive_verses() {
+        let dir = std::env::temp_dir().join(format!("bible-rs-hl-run-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut s = StudyStore::open(&path).unwrap();
+        let phil = |n: u8| VerseRef::new(BookId(49), 4, n);
+
+        assert_eq!(s.highlight_run(phil(11)), None, "no highlight yet");
+
+        // Isolated whole-verse highlight: just that verse.
+        s.set_highlight(phil(11), Some(HighlightColor::Yellow)).unwrap();
+        assert_eq!(s.highlight_run(phil(11)), Some((phil(11), phil(11))));
+        assert_eq!(s.highlight_run_verses(phil(11)).unwrap(), vec![phil(11)]);
+
+        // Partial highlight in 12 plus whole 13: run is 11–13 when starting from any of them.
+        s.highlight_span(
+            &TextSpan { first: phil(12), start: 0, last: phil(12), end: 4 },
+            Some(HighlightColor::Green),
+            |_| Some("abcd efgh".into()),
+        )
+        .unwrap();
+        s.set_highlight(phil(13), Some(HighlightColor::Blue)).unwrap();
+        assert!(s.is_highlighted(phil(12)), "a partial counts");
+        assert_eq!(s.highlight_run(phil(11)), Some((phil(11), phil(13))));
+        assert_eq!(s.highlight_run(phil(12)), Some((phil(11), phil(13))));
+        assert_eq!(s.highlight_run(phil(13)), Some((phil(11), phil(13))));
+        assert_eq!(s.highlight_run_verses(phil(12)).unwrap(), vec![phil(11), phil(12), phil(13)]);
+
+        // A gap ends the run: clear 12, so 11 and 13 are separate.
+        s.set_highlight(phil(12), None).unwrap();
+        assert_eq!(s.highlight_run(phil(11)), Some((phil(11), phil(11))));
+        assert_eq!(s.highlight_run(phil(13)), Some((phil(13), phil(13))));
+        assert_eq!(s.highlight_run(phil(12)), None);
+
+        // Partial-only run with no whole-verse neighbours.
+        s.set_highlight(phil(11), None).unwrap();
+        s.set_highlight(phil(13), None).unwrap();
+        s.highlight_span(
+            &TextSpan { first: phil(11), start: 2, last: phil(11), end: 6 },
+            Some(HighlightColor::Pink),
+            |_| Some("abcdefghij".into()),
+        )
+        .unwrap();
+        s.set_highlight(phil(12), Some(HighlightColor::Orange)).unwrap();
+        assert_eq!(s.highlight_run(phil(11)), Some((phil(11), phil(12))));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
