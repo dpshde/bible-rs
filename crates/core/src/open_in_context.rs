@@ -893,6 +893,7 @@ fn route_bible_url(p: Passage, translation: &str) -> String {
 }
 
 fn build_ai_prompt_body(display: &str, translation: &str) -> String {
+    // Mirrors route.bible's Kg(): reference link only — no local verse text in the prompt.
     let link = format!(
         "[{display}](https://route.bible/?q={}&utm_source=chatgpt&utm_medium=prompt)",
         encode_uri_component(display)
@@ -902,6 +903,37 @@ fn build_ai_prompt_body(display: &str, translation: &str) -> String {
 RULE: Every Scripture reference you write must be a Markdown link to route.bible using OSIS notation in the URL.\n\n\
 Passage in question:\n{link}\n\nTranslation: {translation}"
     )
+}
+
+/// Soft cap for GET query values (translate / capture URLs). Longer ranges truncate with an ellipsis.
+pub const MAX_URL_TEXT_CHARS: usize = 1200;
+
+/// Truncate `s` for embedding in a URL query, appending `…` when clipped.
+pub fn truncate_for_url(s: &str) -> String {
+    let n = s.chars().count();
+    if n <= MAX_URL_TEXT_CHARS {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(MAX_URL_TEXT_CHARS.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+/// `actionBody` for notes / mail / capture: verse text, then an attribution line.
+/// route.bible's feed templates still use `{{actionBody}}` for translate URLs too — callers that
+/// expand a translate adapter should override with [`encoded_raw_text`].
+pub fn action_body_with_text(verse_text: &str, display: &str, translation: &str) -> String {
+    let text = truncate_for_url(verse_text.trim());
+    if text.is_empty() {
+        format!("{display} ({translation})")
+    } else {
+        format!("{text}\n— {display} ({translation})")
+    }
+}
+
+/// Percent-encoded raw verse text for translate URL `text=` params.
+pub fn encoded_raw_text(verse_text: &str) -> String {
+    encode_uri_component(&truncate_for_url(verse_text.trim()))
 }
 
 fn obsidian_note_name(display: &str, translation: &str) -> String {
@@ -931,14 +963,21 @@ fn obsidian_reading_log_base() -> &'static str {
 
 /// Build substitution values for every `{{placeholder}}` used by the vendored links snapshot.
 /// Values that belong in query strings are already `encodeURIComponent`-encoded.
-pub fn template_replacements(passage: Passage, translation: &str) -> BTreeMap<&'static str, String> {
+///
+/// `verse_text` is the open translation's plain verse text (spaces between verses, no numbers).
+pub fn template_replacements(
+    passage: Passage,
+    translation: &str,
+    verse_text: &str,
+) -> BTreeMap<&'static str, String> {
     let translation = normalize_translation(translation);
     let code = passage.book.info().code;
     let (yv_id, yv_code) = resolve_youversion(&translation);
     let display = format_bible_gateway(passage);
     let route_url = route_bible_url(passage, &translation);
     let action_title = format!("{display} ({translation})");
-    let action_body = format!("{action_title}\n{route_url}");
+    let text_for_url = truncate_for_url(verse_text.trim());
+    let action_body = action_body_with_text(&text_for_url, &display, &translation);
     let book_slug = service_book_variant("slug", code);
     let book_code = service_book_variant("blue-letter-bible", code);
     let book_number = (BOOKS.iter().position(|b| b.code == code).unwrap_or(0) + 1).to_string();
@@ -963,6 +1002,8 @@ pub fn template_replacements(passage: Passage, translation: &str) -> BTreeMap<&'
     m.insert("shareText", encode_uri_component(&format!("{display} {route_url}")));
     m.insert("actionTitle", encode_uri_component(&action_title));
     m.insert("actionBody", encode_uri_component(&action_body));
+    // Raw verse text only (for callers / future templates); translate expansion overrides actionBody.
+    m.insert("passageText", encode_uri_component(&text_for_url));
     m.insert("aiPromptBody", encode_uri_component(&ai));
     m.insert("todoistTaskTitle", encode_uri_component(&todoist));
     m.insert("youversionVersionId", encode_uri_component(yv_id));

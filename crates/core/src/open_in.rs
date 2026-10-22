@@ -11,10 +11,32 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::books::VerseRef;
+use crate::books::{ChapterIdx, VerseRef};
+use crate::model::Translation;
 use crate::open_in_context;
 
 const API_BASE: &str = "https://route.bible";
+
+/// route.bible catalogType order and human labels (from their launcher UI).
+const CATALOG_TYPES: &[(&str, &str)] =
+    &[("read", "Read"), ("explore", "Learn"), ("route", "Tools"), ("practice", "Practice")];
+
+/// route.bible catalogSubtype order and labels, keyed by catalogType.
+fn catalog_subtypes(catalog_type: &str) -> &'static [(&'static str, &'static str)] {
+    match catalog_type {
+        "read" => &[("bibles", "Bibles"), ("audio", "Audio")],
+        "explore" => &[
+            ("ask", "Ask"),
+            ("lexicon", "Lexicon"),
+            ("commentary", "Commentary"),
+            ("guides", "Guides"),
+            ("media", "Media"),
+        ],
+        "route" => &[("note", "Note"), ("share", "Share"), ("translate", "Translate")],
+        "practice" => &[("habits", "Habits")],
+        _ => &[],
+    }
+}
 
 /// Links JSON embedded at compile time. `build.rs` stages the vendored snapshot (or a refreshed
 /// feed when `ROUTE_BIBLE_ADAPTERS=refresh`) into `OUT_DIR`.
@@ -92,8 +114,9 @@ impl Passage {
     }
 
     /// Values for every `{{…}}` placeholder the vendored adapters use (pre-encoded where needed).
-    pub fn template_vars(self, translation: &str) -> BTreeMap<&'static str, String> {
-        open_in_context::template_replacements(self, translation)
+    /// `verse_text` is plain scripture from the open translation (see [`passage_plain_text`]).
+    pub fn template_vars(self, translation: &str, verse_text: &str) -> BTreeMap<&'static str, String> {
+        open_in_context::template_replacements(self, translation, verse_text)
     }
 
     /// Launcher URL that route.bible finishes when a local template cannot be expanded.
@@ -118,6 +141,49 @@ pub struct Adapter {
     pub catalog_subtype: Option<String>,
     #[serde(default)]
     pub links: Vec<LinkTemplate>,
+}
+
+impl Adapter {
+    /// True when the adapter has a desktop-usable link (web/desktop OS, or unscoped like mailto).
+    pub fn visible_on_desktop(&self) -> bool {
+        self.links.iter().any(|l| {
+            l.usable_on_desktop()
+                || l.platforms.is_empty()
+                || l.template.starts_with("mailto:")
+                || l.template.contains("translate.google.")
+                || l.template.contains("translate.kagi.")
+        })
+    }
+
+    /// Translate destinations (Google / Kagi / catalogSubtype=translate): raw verse text only.
+    pub fn is_translate(&self) -> bool {
+        self.catalog_subtype.as_deref() == Some("translate")
+            || self
+                .links
+                .iter()
+                .any(|l| l.template.contains("translate.google.") || l.template.contains("translate.kagi."))
+    }
+}
+
+/// Plain verse text for a passage from `t`: verses joined with spaces, no verse numbers.
+pub fn passage_plain_text(t: &Translation, passage: Passage) -> String {
+    let Some(chapter) = ChapterIdx::new(passage.book, passage.chapter) else {
+        return String::new();
+    };
+    if !passage.has_verse() {
+        return t
+            .verses_in(chapter)
+            .map(|v| v.plain_text())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
+    (passage.verse_start..=passage.verse_end)
+        .filter_map(|n| t.find(VerseRef::new(passage.book, passage.chapter, n)))
+        .map(|v| v.plain_text())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A link template from the vendored `@route-bible/adapters` links snapshot.
@@ -151,6 +217,13 @@ pub struct Catalog {
     pub items: Vec<Adapter>,
 }
 
+/// One labelled group in the Open in › flyout (route.bible catalog subtype).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuSection<'a> {
+    pub label: &'static str,
+    pub items: Vec<&'a Adapter>,
+}
+
 impl Catalog {
     /// Embedded snapshot — no disk I/O, no network at runtime.
     pub fn bundled() -> Self {
@@ -158,24 +231,56 @@ impl Catalog {
         Self { items: file.adapters }
     }
 
-    /// Featured (by rank) first, then the rest A–Z by name. Skips disabled entries.
-    pub fn menu_items(&self) -> Vec<&Adapter> {
-        let mut featured: Vec<&Adapter> = Vec::new();
-        let mut rest: Vec<&Adapter> = Vec::new();
-        for a in &self.items {
-            if a.status == "disabled" {
-                continue;
-            }
-            if a.featured_rank.is_some() {
-                featured.push(a);
-            } else {
-                rest.push(a);
+    /// Desktop-visible adapters grouped by route.bible catalog type → subtype order.
+    /// Empty groups (after filtering mobile-only) are omitted. Within a section: featured by
+    /// rank, then A–Z.
+    pub fn menu_sections(&self) -> Vec<MenuSection<'_>> {
+        let mut sections = Vec::new();
+        for &(ctype, _type_label) in CATALOG_TYPES {
+            for &(subtype, label) in catalog_subtypes(ctype) {
+                let mut items: Vec<&Adapter> = self
+                    .items
+                    .iter()
+                    .filter(|a| a.status != "disabled")
+                    .filter(|a| a.visible_on_desktop())
+                    .filter(|a| {
+                        a.catalog_type.as_deref() == Some(ctype)
+                            && a.catalog_subtype.as_deref() == Some(subtype)
+                    })
+                    .collect();
+                if items.is_empty() {
+                    continue;
+                }
+                items.sort_by(|a, b| match (a.featured_rank, b.featured_rank) {
+                    (Some(x), Some(y)) => {
+                        x.cmp(&y).then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
+                    }
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()),
+                });
+                sections.push(MenuSection { label, items });
             }
         }
-        featured.sort_by_key(|a| a.featured_rank.unwrap_or(u32::MAX));
-        rest.sort_by_key(|a| a.name.to_ascii_lowercase());
-        featured.extend(rest);
-        featured
+        // Any active desktop adapter missing catalog fields — append under "Other".
+        let grouped_ids: std::collections::HashSet<&str> =
+            sections.iter().flat_map(|s| s.items.iter().map(|a| a.id.as_str())).collect();
+        let mut other: Vec<&Adapter> = self
+            .items
+            .iter()
+            .filter(|a| a.status != "disabled" && a.visible_on_desktop())
+            .filter(|a| !grouped_ids.contains(a.id.as_str()))
+            .collect();
+        if !other.is_empty() {
+            other.sort_by_key(|a| a.name.to_ascii_lowercase());
+            sections.push(MenuSection { label: "Other", items: other });
+        }
+        sections
+    }
+
+    /// Flat list in section order (for tests / callers that do not draw headers).
+    pub fn menu_items(&self) -> Vec<&Adapter> {
+        self.menu_sections().into_iter().flat_map(|s| s.items).collect()
     }
 }
 
@@ -207,11 +312,21 @@ fn finalize_desktop_url(url: String) -> Option<String> {
 
 /// Expand a desktop-usable link for `adapter_id`. Skips ios/android-only deep links.
 /// Returns `None` when no web/desktop template expands to an http(s) URL.
-pub fn expand_adapter_url(adapter_id: &str, passage: Passage, translation: &str) -> Option<String> {
+pub fn expand_adapter_url(
+    adapter_id: &str,
+    passage: Passage,
+    translation: &str,
+    verse_text: &str,
+) -> Option<String> {
     let catalog = Catalog::bundled();
     let adapter = catalog.items.iter().find(|a| a.id == adapter_id)?;
-    let vars = passage.template_vars(translation);
-    let usable: Vec<&LinkTemplate> = adapter.links.iter().filter(|l| l.usable_on_desktop()).collect();
+    let mut vars = passage.template_vars(translation, verse_text);
+    // Translate templates still say `{{actionBody}}` in the feed — fill with raw verse text only.
+    if adapter.is_translate() {
+        vars.insert("actionBody", open_in_context::encoded_raw_text(verse_text));
+    }
+    let usable: Vec<&LinkTemplate> =
+        adapter.links.iter().filter(|l| l.usable_on_desktop() || l.platforms.is_empty()).collect();
     // Prefer kind=web, then any other desktop-usable link.
     let ordered = usable
         .iter()
@@ -235,14 +350,19 @@ pub fn expand_adapter_url(adapter_id: &str, passage: Passage, translation: &str)
 }
 
 /// Whether [`open_url_for`] would use the route.bible launcher (no local web expansion).
-pub fn uses_launcher_fallback(adapter_id: &str, passage: Passage, translation: &str) -> bool {
-    expand_adapter_url(adapter_id, passage, translation).is_none()
+pub fn uses_launcher_fallback(
+    adapter_id: &str,
+    passage: Passage,
+    translation: &str,
+    verse_text: &str,
+) -> bool {
+    expand_adapter_url(adapter_id, passage, translation, verse_text).is_none()
 }
 
 /// Best URL for opening `adapter_id` with `passage` on desktop: local web template expansion,
 /// else the route.bible launcher. Never returns a mobile-only deep link.
-pub fn open_url_for(passage: Passage, adapter_id: &str, translation: &str) -> String {
-    expand_adapter_url(adapter_id, passage, translation)
+pub fn open_url_for(passage: Passage, adapter_id: &str, translation: &str, verse_text: &str) -> String {
+    expand_adapter_url(adapter_id, passage, translation, verse_text)
         .unwrap_or_else(|| passage.fallback_open_url(adapter_id))
 }
 
@@ -289,10 +409,13 @@ mod tests {
         assert!(Passage::from_refs(&[a, b]).is_none());
     }
 
+    const JN316_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
+    const JN316_BSB: &str = "For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life.";
+
     #[test]
     fn expand_template_fills_known_placeholders() {
         let p = Passage::from_refs(&[john(16)]).unwrap();
-        let vars = p.template_vars("ESV");
+        let vars = p.template_vars("ESV", "");
         let url = expand_template(
             "https://www.biblegateway.com/passage/?search={{displayPassage}}&version={{translation}}",
             &vars,
@@ -304,24 +427,39 @@ mod tests {
     #[test]
     fn expand_template_rejects_unknown_placeholders() {
         let p = Passage::from_refs(&[john(16)]).unwrap();
-        let vars = p.template_vars("ESV");
+        let vars = p.template_vars("ESV", "");
         assert!(expand_template("https://x.test/{{notARealVar}}/{{passage}}", &vars).is_none());
     }
 
     #[test]
-    fn bundled_catalog_lists_featured_first() {
+    fn menu_sections_follow_route_bible_group_order() {
         let c = Catalog::bundled();
         assert!(c.items.len() >= 50, "bundled links should ship the public adapters");
-        let menu = c.menu_items();
-        assert_eq!(menu[0].id, "bible-app");
-        assert_eq!(menu[0].featured_rank, Some(1));
-        assert_eq!(menu[1].id, "bible-gateway");
+        let sections = c.menu_sections();
+        let labels: Vec<&str> = sections.iter().map(|s| s.label).collect();
+        // Subtype order within catalogType order; empty groups omitted.
+        let expected_prefix = ["Bibles", "Audio", "Ask", "Lexicon"];
+        for (i, want) in expected_prefix.iter().enumerate() {
+            assert_eq!(labels.get(i), Some(want), "labels={labels:?}");
+        }
+        assert!(labels.contains(&"Translate"), "{labels:?}");
+        assert!(labels.contains(&"Habits"), "{labels:?}");
+        // Featured YouVersion stays in Bibles, ranked first within that section.
+        let bibles = sections.iter().find(|s| s.label == "Bibles").unwrap();
+        assert_eq!(bibles.items[0].id, "bible-app");
+        assert_eq!(bibles.items[0].featured_rank, Some(1));
+        // No empty sections.
+        assert!(sections.iter().all(|s| !s.items.is_empty()));
+        // Translate group has google + kagi.
+        let tr = sections.iter().find(|s| s.label == "Translate").unwrap();
+        let ids: Vec<&str> = tr.items.iter().map(|a| a.id.as_str()).collect();
+        assert!(ids.contains(&"google-translate") && ids.contains(&"kagi-translate"), "{ids:?}");
     }
 
     #[test]
     fn bible_app_opens_https_youversion_web_on_desktop() {
         let p = Passage::from_refs(&[john(16)]).unwrap();
-        let url = open_url_for(p, "bible-app", "ESV");
+        let url = open_url_for(p, "bible-app", "ESV", "");
         assert!(
             url.starts_with("https://www.bible.com/bible/59/"),
             "expected YouVersion web URL for ESV, got {url}"
@@ -335,7 +473,7 @@ mod tests {
     fn never_picks_ios_android_only_deep_link() {
         let p = Passage::from_refs(&[john(16)]).unwrap();
         // shortcuts only has an ios deep link + a relative /shortcuts web path
-        let url = open_url_for(p, "shortcuts", "ESV");
+        let url = open_url_for(p, "shortcuts", "ESV", "");
         assert!(url.starts_with("https://"), "{url}");
         assert!(!url.starts_with("shortcuts://"));
     }
@@ -343,7 +481,7 @@ mod tests {
     #[test]
     fn simple_adapter_expands_from_bundled_links() {
         let p = Passage::from_refs(&[john(16)]).unwrap();
-        let url = expand_adapter_url("bible-gateway", p, "ESV").expect("bible-gateway template");
+        let url = expand_adapter_url("bible-gateway", p, "ESV", "").expect("bible-gateway template");
         assert!(url.starts_with("https://www.biblegateway.com/passage/?search="));
         assert!(url.contains("John%203%3A16"));
     }
@@ -351,7 +489,7 @@ mod tests {
     #[test]
     fn logos_expands_web_template_locally() {
         let p = Passage::from_refs(&[rom(3), rom(5)]).unwrap();
-        let url = open_url_for(p, "logos", "ESV");
+        let url = open_url_for(p, "logos", "ESV", "");
         assert!(
             url.starts_with("https://app.logos.com/") || url.starts_with("https://route.bible/"),
             "{url}"
@@ -363,6 +501,36 @@ mod tests {
     fn fallback_open_url_points_at_route_bible() {
         let p = Passage::from_refs(&[rom(3), rom(5)]).unwrap();
         assert_eq!(p.fallback_open_url("mailto"), "https://route.bible/rom.5.3-5?app=mailto&mode=web");
+    }
+
+    #[test]
+    fn google_and_kagi_translate_use_raw_verse_text() {
+        let p = Passage::from_refs(&[john(16)]).unwrap();
+        for (id, text, tr) in [
+            ("google-translate", JN316_KJV, "KJV"),
+            ("kagi-translate", JN316_KJV, "KJV"),
+            ("google-translate", JN316_BSB, "BSB"),
+            ("kagi-translate", JN316_BSB, "BSB"),
+        ] {
+            let url = open_url_for(p, id, tr, text);
+            let encoded = open_in_context::encoded_raw_text(text);
+            assert!(url.contains(&encoded), "{id} {tr} missing verse text: {url}");
+            assert!(!url.contains("route.bible"), "{id} must not put route.bible in translate text: {url}");
+            // Attribution line must not appear in translate URLs.
+            assert!(!url.contains("%E2%80%94"), "{id} has em dash: {url}");
+        }
+    }
+
+    #[test]
+    fn action_body_includes_verse_text_and_attribution() {
+        let p = Passage::from_refs(&[john(16)]).unwrap();
+        let vars = p.template_vars("KJV", JN316_KJV);
+        let body = vars.get("actionBody").unwrap();
+        // Encoded "{text}\n— John 3:16 (KJV)" — no route.bible URL.
+        assert!(body.starts_with(&open_in_context::encoded_raw_text(JN316_KJV)));
+        assert!(body.contains("%E2%80%94"), "expected em dash in actionBody: {body}");
+        assert!(body.contains("John%203%3A16"));
+        assert!(!body.contains("route.bible"));
     }
 
     #[test]
@@ -381,14 +549,14 @@ mod tests {
             }
             let mut used_fallback_all = true;
             for p in passages {
-                let url = open_url_for(p, &adapter.id, "ESV");
+                let url = open_url_for(p, &adapter.id, "ESV", "sample verse text");
                 if !(url.starts_with("https://") || url.starts_with("http://")) {
                     failures.push(format!("{} → non-http {url}", adapter.id));
                 }
                 if url.contains("{{") {
                     failures.push(format!("{} → unexpanded {url}", adapter.id));
                 }
-                if !uses_launcher_fallback(&adapter.id, p, "ESV") {
+                if !uses_launcher_fallback(&adapter.id, p, "ESV", "sample verse text") {
                     used_fallback_all = false;
                 }
             }

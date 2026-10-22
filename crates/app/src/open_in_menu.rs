@@ -1,5 +1,5 @@
 //! The "Open in ›" flyout on the verse menu: static adapters from the vendored links snapshot,
-//! with vendored favicons and scroll that matches the reader's wheel/trackpad feel.
+//! grouped like route.bible, with vendored favicons and scroll that matches the reader's feel.
 
 use std::collections::HashMap;
 
@@ -11,23 +11,35 @@ use eframe::egui::{
 
 use crate::actions::Action;
 use crate::icons;
-use crate::menu::{self, ITEM_HEIGHT, PADDING_X, PADDING_Y};
+use crate::menu::{self, ITEM_HEIGHT, PADDING_X, PADDING_Y, SEPARATOR_HEIGHT};
 use crate::theme::{Palette, icon, menu as tokens, text};
 
 const WIDTH: f32 = 240.0;
-/// How many adapters show before the list scrolls.
+/// How many adapter rows show before the list scrolls (headers don't count toward this).
 const VISIBLE: usize = 12;
 /// Cap a single frame's wheel/trackpad step so a notch can't leap the whole list.
 const MAX_SCROLL_STEP: f32 = ITEM_HEIGHT * 3.0;
 
+/// Header label + 1px rule under it (house rule: no other dividers).
+fn header_block_height() -> f32 {
+    tokens::HEADER_HEIGHT + SEPARATOR_HEIGHT
+}
+
+#[derive(Clone, Copy)]
+enum Entry<'a> {
+    Header(&'static str),
+    Item(usize, &'a Adapter),
+}
+
 pub struct OpenInMenu {
     /// Top-left of the flyout.
     pub pos: Pos2,
+    /// Index into the flat adapter list (headers are not selectable).
     highlighted: Option<usize>,
     /// Filter text (typed while the flyout is open).
     filter: String,
     opened: bool,
-    /// Pixel offset into the adapter list (0 = top).
+    /// Pixel offset into the scrollable content (0 = top).
     scroll_y: f32,
     /// Lazily decoded vendored PNGs, keyed by adapter id.
     textures: HashMap<String, TextureHandle>,
@@ -45,30 +57,67 @@ impl OpenInMenu {
         }
     }
 
-    fn rows<'a>(catalog: &'a Catalog, filter: &str) -> Vec<&'a Adapter> {
+    fn entries<'a>(catalog: &'a Catalog, filter: &str) -> (Vec<Entry<'a>>, Vec<&'a Adapter>) {
         let q = filter.trim().to_ascii_lowercase();
-        catalog
-            .menu_items()
-            .into_iter()
-            .filter(|a| q.is_empty() || a.name.to_ascii_lowercase().contains(&q) || a.id.contains(&q))
-            .collect()
+        let mut entries = Vec::new();
+        let mut flat = Vec::new();
+        for section in catalog.menu_sections() {
+            let items: Vec<&Adapter> = section
+                .items
+                .into_iter()
+                .filter(|a| q.is_empty() || a.name.to_ascii_lowercase().contains(&q) || a.id.contains(&q))
+                .collect();
+            if items.is_empty() {
+                continue;
+            }
+            entries.push(Entry::Header(section.label));
+            for a in items {
+                let idx = flat.len();
+                flat.push(a);
+                entries.push(Entry::Item(idx, a));
+            }
+        }
+        (entries, flat)
     }
 
-    fn max_scroll(row_count: usize) -> f32 {
-        let content = row_count as f32 * ITEM_HEIGHT;
-        let view = ITEM_HEIGHT * VISIBLE.min(row_count.max(1)) as f32;
-        (content - view).max(0.0)
+    fn content_height(entries: &[Entry<'_>]) -> f32 {
+        entries
+            .iter()
+            .map(|e| match e {
+                Entry::Header(_) => header_block_height(),
+                Entry::Item(_, _) => ITEM_HEIGHT,
+            })
+            .sum()
     }
 
-    fn ensure_visible(&mut self, idx: usize, row_count: usize) {
-        let view = ITEM_HEIGHT * VISIBLE.min(row_count.max(1)) as f32;
-        let y = idx as f32 * ITEM_HEIGHT;
+    fn max_scroll(entries: &[Entry<'_>], view_h: f32) -> f32 {
+        (Self::content_height(entries) - view_h).max(0.0)
+    }
+
+    fn adapter_y(entries: &[Entry<'_>], adapter_idx: usize) -> f32 {
+        let mut y = 0.0;
+        for e in entries {
+            match e {
+                Entry::Header(_) => y += header_block_height(),
+                Entry::Item(i, _) => {
+                    if *i == adapter_idx {
+                        return y;
+                    }
+                    y += ITEM_HEIGHT;
+                }
+            }
+        }
+        y
+    }
+
+    fn ensure_visible(&mut self, adapter_idx: usize, entries: &[Entry<'_>], view_h: f32) {
+        let y = Self::adapter_y(entries, adapter_idx);
         if y < self.scroll_y {
             self.scroll_y = y;
-        } else if y + ITEM_HEIGHT > self.scroll_y + view {
-            self.scroll_y = y + ITEM_HEIGHT - view;
+        } else if y + ITEM_HEIGHT > self.scroll_y + view_h {
+            self.scroll_y = y + ITEM_HEIGHT - view_h;
         }
-        self.scroll_y = self.scroll_y.clamp(0.0, Self::max_scroll(row_count));
+        self.scroll_y = self.scroll_y.clamp(0.0, Self::max_scroll(entries, view_h));
     }
 
     fn texture(&mut self, ctx: &egui::Context, id: &str) -> Option<TextureHandle> {
@@ -113,7 +162,8 @@ impl OpenInMenu {
                 i.consume_key(Modifiers::NONE, Key::Escape),
             )
         });
-        let rows = Self::rows(catalog, &self.filter);
+        let (entries, rows) = Self::entries(catalog, &self.filter);
+        let view_h = ITEM_HEIGHT * VISIBLE.min(rows.len().max(1)) as f32;
         if self.filter != prev_filter {
             self.scroll_y = 0.0;
             self.highlighted = if rows.is_empty() { None } else { Some(0) };
@@ -135,13 +185,13 @@ impl OpenInMenu {
             let at = self.highlighted.unwrap_or(0);
             let next = (at + 1) % rows.len();
             self.highlighted = Some(next);
-            self.ensure_visible(next, rows.len());
+            self.ensure_visible(next, &entries, view_h);
         }
         if up && !rows.is_empty() {
             let at = self.highlighted.unwrap_or(0);
             let next = (at + rows.len() - 1) % rows.len();
             self.highlighted = Some(next);
-            self.ensure_visible(next, rows.len());
+            self.ensure_visible(next, &entries, view_h);
         }
         if enter
             && let Some(i) = self.highlighted
@@ -151,8 +201,7 @@ impl OpenInMenu {
             return true;
         }
 
-        let shown = rows.len().min(VISIBLE).max(if rows.is_empty() { 0 } else { 1 });
-        let list_h = ITEM_HEIGHT * shown.max(1) as f32;
+        let list_h = if rows.is_empty() { ITEM_HEIGHT } else { view_h };
         let filter_h = if self.filter.is_empty() { 0.0 } else { tokens::HEADER_HEIGHT };
         let height = PADDING_Y + filter_h + list_h + PADDING_Y;
         let screen = ctx.content_rect();
@@ -161,14 +210,20 @@ impl OpenInMenu {
             self.pos.y.min(screen.bottom() - height - 8.0).max(screen.top() + 8.0),
         );
         let mut close = false;
-        let max_scroll = Self::max_scroll(rows.len());
+        let max_scroll = Self::max_scroll(&entries, list_h);
         self.scroll_y = self.scroll_y.clamp(0.0, max_scroll);
 
-        // Warm textures for the visible window before painting (avoids borrow fights in the loop).
-        let start = (self.scroll_y / ITEM_HEIGHT).floor() as usize;
-        let warm_end = (start + VISIBLE + 1).min(rows.len());
-        for a in rows.iter().take(warm_end).skip(start) {
-            let _ = self.texture(ctx, &a.id);
+        // Warm textures for adapters near the scroll window.
+        let warm_lo = Self::adapter_y(&entries, 0);
+        let _ = warm_lo;
+        for e in &entries {
+            if let Entry::Item(i, a) = e {
+                let y = Self::adapter_y(&entries, *i);
+                if y + ITEM_HEIGHT >= self.scroll_y - ITEM_HEIGHT && y <= self.scroll_y + list_h + ITEM_HEIGHT
+                {
+                    let _ = self.texture(ctx, &a.id);
+                }
+            }
         }
 
         let area = egui::Area::new(egui::Id::new("open-in-menu"))
@@ -179,8 +234,6 @@ impl OpenInMenu {
                 p.shadows.popover.paint(ui.painter(), rect, tokens::RADIUS);
                 ui.painter().rect_filled(rect, tokens::RADIUS, p.surface);
                 let resp = ui.allocate_rect(rect, Sense::hover());
-                // Match the reader: egui's smoothed wheel/trackpad delta, consumed so the page
-                // behind the flyout does not scroll. Cap a single frame so notches stay calm.
                 if resp.hovered() || resp.contains_pointer() {
                     let dy = ui.ctx().input_mut(|i| {
                         let d = i.smooth_scroll_delta.y;
@@ -205,39 +258,61 @@ impl OpenInMenu {
                     return;
                 }
                 let list = Rect::from_x_y_ranges(left..=right, y..=y + list_h);
-                let start = (self.scroll_y / ITEM_HEIGHT).floor() as usize;
-                let y_off = self.scroll_y - start as f32 * ITEM_HEIGHT;
                 let painter = ui.painter().with_clip_rect(list);
-                let mut row_y = list.top() - y_off;
-                for (i, adapter) in rows.iter().enumerate().skip(start) {
-                    if row_y >= list.bottom() {
-                        break;
+                let mut row_y = list.top() - self.scroll_y;
+                for entry in &entries {
+                    match entry {
+                        Entry::Header(label) => {
+                            let h = header_block_height();
+                            if row_y + h >= list.top() && row_y < list.bottom() {
+                                let header = Rect::from_x_y_ranges(
+                                    left..=right,
+                                    row_y..=row_y + tokens::HEADER_HEIGHT,
+                                );
+                                paint_section_header(&painter, p, header, label);
+                                menu::paint_separator(
+                                    &painter,
+                                    p,
+                                    left,
+                                    right,
+                                    row_y + tokens::HEADER_HEIGHT,
+                                );
+                            }
+                            row_y += h;
+                        }
+                        Entry::Item(i, adapter) => {
+                            if row_y >= list.bottom() {
+                                break;
+                            }
+                            if row_y + ITEM_HEIGHT > list.top() {
+                                let r = Rect::from_x_y_ranges(left..=right, row_y..=row_y + ITEM_HEIGHT);
+                                let hit = ui.interact(
+                                    r.intersect(list),
+                                    ui.id().with(("open-in", &adapter.id)),
+                                    Sense::click(),
+                                );
+                                if hit.hovered() && ui.input(|inp| inp.pointer.delta() != egui::Vec2::ZERO) {
+                                    self.highlighted = Some(*i);
+                                }
+                                let lit = self.highlighted == Some(*i);
+                                let tex = self.textures.get(&adapter.id);
+                                paint_adapter_row(
+                                    &painter,
+                                    p,
+                                    r,
+                                    adapter.name.as_str(),
+                                    tex,
+                                    lit,
+                                    hit.is_pointer_button_down_on(),
+                                );
+                                if hit.clicked() {
+                                    actions.push(Action::OpenIn(adapter.id.clone()));
+                                    close = true;
+                                }
+                            }
+                            row_y += ITEM_HEIGHT;
+                        }
                     }
-                    let r = Rect::from_x_y_ranges(left..=right, row_y..=row_y + ITEM_HEIGHT);
-                    let hit = ui.interact(
-                        r.intersect(list),
-                        ui.id().with(("open-in", &adapter.id)),
-                        Sense::click(),
-                    );
-                    if hit.hovered() && ui.input(|inp| inp.pointer.delta() != egui::Vec2::ZERO) {
-                        self.highlighted = Some(i);
-                    }
-                    let lit = self.highlighted == Some(i);
-                    let tex = self.textures.get(&adapter.id);
-                    paint_adapter_row(
-                        &painter,
-                        p,
-                        r,
-                        adapter.name.as_str(),
-                        tex,
-                        lit,
-                        hit.is_pointer_button_down_on(),
-                    );
-                    if hit.clicked() {
-                        actions.push(Action::OpenIn(adapter.id.clone()));
-                        close = true;
-                    }
-                    row_y += ITEM_HEIGHT;
                 }
             });
         if !self.opened {
@@ -247,6 +322,18 @@ impl OpenInMenu {
         }
         close
     }
+}
+
+/// Small muted uppercase-ish section label (not clickable).
+fn paint_section_header(painter: &egui::Painter, p: &Palette, r: Rect, label: &str) {
+    let shown = label.to_ascii_uppercase();
+    painter.text(
+        pos2(r.left() + tokens::ITEM_PADDING, r.center().y),
+        Align2::LEFT_CENTER,
+        shown,
+        text::CAPTION.font(),
+        p.ink_3,
+    );
 }
 
 fn paint_adapter_row(

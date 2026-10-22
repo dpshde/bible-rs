@@ -780,8 +780,18 @@ impl BibleApp {
             Action::OpenIn(adapter_id) => {
                 let refs = self.reader.selected_refs();
                 if let Some(passage) = bible_core::open_in::Passage::from_refs(&refs) {
-                    let url =
-                        bible_core::open_in::open_url_for(passage, &adapter_id, &self.settings.translation);
+                    let verse_text = self
+                        .library
+                        .load(&self.settings.translation)
+                        .ok()
+                        .map(|t| bible_core::open_in::passage_plain_text(&t, passage))
+                        .unwrap_or_default();
+                    let url = bible_core::open_in::open_url_for(
+                        passage,
+                        &adapter_id,
+                        &self.settings.translation,
+                        &verse_text,
+                    );
                     open_url(&url);
                     let name = self
                         .open_in_catalog
