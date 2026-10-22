@@ -40,34 +40,30 @@ impl VerseMenu {
 
     fn lines(study: &StudyStore, refs: &[VerseRef]) -> Vec<Line> {
         let first = refs[0];
-        let item = |icon: IconFn, label: &str, shortcut: &'static str, action: Option<Action>| Line::Item {
+        let item = |icon: IconFn, label: String, shortcut: &'static str, action: Option<Action>| Line::Item {
             icon,
-            label: label.to_string(),
+            label,
             shortcut,
             action,
         };
+        let (bookmark_label, bookmark_action) = bookmark_menu(study, first);
         vec![
             item(
                 icons::note,
-                if study.note(first).is_some() { "Edit Note…" } else { "Add Note…" },
+                if study.note(first).is_some() { "Edit Note…".into() } else { "Add Note…".into() },
                 "N",
                 Some(Action::EditSelectedNote),
             ),
-            item(
-                bookmark,
-                if study.is_bookmarked(first) { "Remove Bookmark" } else { "Bookmark" },
-                "B",
-                Some(Action::ToggleBookmark),
-            ),
+            item(bookmark, bookmark_label, "B", Some(bookmark_action)),
             Line::Separator,
-            item(icons::copy, "Copy", "⌘C", Some(Action::CopyText)),
-            item(icons::quote, "Copy with Reference", "⇧⌘C", Some(Action::Copy)),
-            item(icons::share, "Share as Image…", "", Some(Action::ShareImage)),
+            item(icons::copy, "Copy".into(), "⌘C", Some(Action::CopyText)),
+            item(icons::quote, "Copy with Reference".into(), "⇧⌘C", Some(Action::Copy)),
+            item(icons::share, "Share as Image…".into(), "", Some(Action::ShareImage)),
             Line::Separator,
-            item(icons::compare, "Compare Translations", "C", Some(Action::Compare)),
-            item(icons::columns, "Open in Parallel", "⇧⌘P", Some(Action::ToggleParallel)),
+            item(icons::compare, "Compare Translations".into(), "C", Some(Action::Compare)),
+            item(icons::columns, "Open in Parallel".into(), "⇧⌘P", Some(Action::ToggleParallel)),
             Line::Separator,
-            item(icons::text_cursor, "Select Verse Range", "⇧-click", None),
+            item(icons::text_cursor, "Select Verse Range".into(), "⇧-click", None),
         ]
     }
 
@@ -235,4 +231,70 @@ impl VerseMenu {
 
 fn bookmark(p: &Painter, r: Rect, c: Color32) {
     icons::bookmark(p, r, c, false);
+}
+
+/// Label and action for the Bookmark row: a highlighted verse bookmarks its outer consecutive run.
+fn bookmark_menu(study: &StudyStore, first: VerseRef) -> (String, Action) {
+    if let Some((from, to)) = study.highlight_run(first) {
+        let verses = study.highlight_run_verses(first).unwrap_or_else(|| vec![first]);
+        let label = format!("Bookmark {}", bible_core::reference::format_range(from, to));
+        (label, Action::BookmarkVerses(verses))
+    } else {
+        (
+            if study.is_bookmarked(first) { "Remove Bookmark".into() } else { "Bookmark".into() },
+            Action::ToggleBookmark,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bible_core::books::BookId;
+    use bible_core::study::{HighlightColor, TextSpan};
+
+    fn phil(n: u8) -> VerseRef {
+        VerseRef::new(BookId(49), 4, n)
+    }
+
+    #[test]
+    fn bookmark_menu_uses_outer_highlight_run() {
+        let dir = std::env::temp_dir().join(format!("bible-rs-verse-menu-bm-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut study = StudyStore::open(&path).unwrap();
+
+        // No highlight: plain toggle.
+        let (label, action) = bookmark_menu(&study, phil(11));
+        assert_eq!(label, "Bookmark");
+        assert_eq!(action, Action::ToggleBookmark);
+
+        // Isolated highlight → Bookmark that verse.
+        study.set_highlight(phil(11), Some(HighlightColor::Yellow)).unwrap();
+        let (label, action) = bookmark_menu(&study, phil(11));
+        assert_eq!(label, "Bookmark Philippians 4:11");
+        assert_eq!(action, Action::BookmarkVerses(vec![phil(11)]));
+
+        // Partial in 12 + whole 13 → outer range from any of them.
+        study
+            .highlight_span(
+                &TextSpan { first: phil(12), start: 0, last: phil(12), end: 3 },
+                Some(HighlightColor::Green),
+                |_| Some("abcdef".into()),
+            )
+            .unwrap();
+        study.set_highlight(phil(13), Some(HighlightColor::Blue)).unwrap();
+        let (label, action) = bookmark_menu(&study, phil(12));
+        assert_eq!(label, "Bookmark Philippians 4:11–13");
+        assert_eq!(action, Action::BookmarkVerses(vec![phil(11), phil(12), phil(13)]));
+
+        // Gap at 12 → each end is its own run.
+        study.set_highlight(phil(12), None).unwrap();
+        let (label, _) = bookmark_menu(&study, phil(11));
+        assert_eq!(label, "Bookmark Philippians 4:11");
+        let (label, _) = bookmark_menu(&study, phil(13));
+        assert_eq!(label, "Bookmark Philippians 4:13");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
