@@ -116,11 +116,27 @@ async function apply(app: ReadApp, step: string) {
 	const verse: VerseRef | null = ref?.verse ? { book: ref.book, chapter: ref.chapter, verse: ref.verse } : null;
 	switch (cmd) {
 		case 'jump':
-			if (ref) app.dispatch({ type: 'jump', chapter: ref.chapterIndex, verse: ref.verse ?? undefined, flash: !!ref.verse });
+			if (ref)
+				app.dispatch({
+					type: 'jump',
+					chapter: ref.chapterIndex,
+					verse: ref.verse ?? undefined,
+					verseEnd: ref.verseEnd && ref.verse && ref.verseEnd > ref.verse ? ref.verseEnd : undefined,
+					flash: !!ref.verse
+				});
 			await frames(6);
 			break;
 		case 'select':
-			app.setSelection(verse);
+			if (ref?.verse) {
+				const from = { book: ref.book, chapter: ref.chapter, verse: ref.verse };
+				const to =
+					ref.verseEnd && ref.verseEnd > ref.verse
+						? { book: ref.book, chapter: ref.chapter, verse: ref.verseEnd }
+						: from;
+				app.setSelectionRange([from, to]);
+			} else {
+				app.setSelection(null);
+			}
 			break;
 		case 'palette':
 			app.demo.palette = arg;

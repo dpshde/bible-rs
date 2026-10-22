@@ -64,7 +64,7 @@ export interface Toast {
 }
 
 export type Action =
-	| { type: 'jump'; chapter: number; verse?: number; flash?: boolean }
+	| { type: 'jump'; chapter: number; verse?: number; verseEnd?: number; flash?: boolean }
 	| { type: 'back' }
 	| { type: 'forward' }
 	| { type: 'prevChapter' }
@@ -524,8 +524,22 @@ export class ReadApp {
 	}
 
 	setSelection(v: VerseRef | null) {
+		this.setSelectionRange(v ? [v, v] : null);
+	}
+
+	/** Selects an inclusive verse range (same chapter), or clears the selection. */
+	setSelectionRange(range: [VerseRef, VerseRef] | null) {
 		this.words = null;
-		this.selection = v ? [v, v] : null;
+		if (!range) {
+			this.selection = null;
+			return;
+		}
+		const [a, b] = range;
+		if (a.book === b.book && a.chapter === b.chapter) {
+			this.selection = refCmp(a, b) <= 0 ? [a, b] : [b, a];
+		} else {
+			this.selection = [a, a];
+		}
 	}
 
 	#stepSelection(delta: number) {
@@ -809,9 +823,16 @@ export class ReadApp {
 			case 'jump':
 				this.page = 'reader';
 				this.#jump(a.chapter, a.verse, a.flash ?? false);
-				// Landing on a specific verse selects it, so N/B/C/1–6 act on it right away. Anywhere
-				// else, a selection left from before would send J/K back to where it was.
-				this.setSelection(a.verse && a.flash ? this.refAt(a.chapter, a.verse) : null);
+				// Landing on a specific verse selects it (or its range), so N/B/C/1–6 act on it
+				// right away. Anywhere else, a selection left from before would send J/K back.
+				if (a.verse && a.flash) {
+					const from = this.refAt(a.chapter, a.verse);
+					const to =
+						a.verseEnd && a.verseEnd > a.verse ? this.refAt(a.chapter, a.verseEnd) : from;
+					this.setSelectionRange([from, to]);
+				} else {
+					this.setSelection(null);
+				}
 				break;
 			case 'back': {
 				if (this.page !== 'reader') {

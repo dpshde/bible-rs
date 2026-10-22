@@ -212,7 +212,12 @@ impl State {
                 paint_runs(&painter, cx + 2.0, css_baseline(run.top(), 24.0, 16.0, true), l, p.ink);
             }
             if resp.clicked() {
-                actions.push(Action::Jump { chapter: v.chapter_idx(), verse: Some(v.verse), flash: true });
+                actions.push(Action::Jump {
+                    chapter: v.chapter_idx(),
+                    verse: Some(v.verse),
+                    verse_end: None,
+                    flash: true,
+                });
             }
             resp.context_menu(|ui| {
                 if ui.button("Remove Highlight").clicked() {

@@ -1,8 +1,9 @@
 <!--
 	The reading area: chapters one after another in a scroller, as on the Mac (reader/mod.rs).
 	Only the chapters around the reading position are in the page; more are added as it scrolls,
-	keeping what's on screen still. Clicking a verse selects it, shift-click extends, double-click
-	writes a note, right-click opens the verse menu. Selecting text (dragging, or a long press and
+	keeping what's on screen still. Clicking a verse selects it, shift-click extends, and shift-drag
+	(or a touch drag) selects a verse range within one chapter. Double-click writes a note,
+	right-click opens the verse menu. Selecting text (dragging without shift, or a long press and
 	its handles on a touch screen) chooses words to highlight, within one chapter.
 -->
 <script lang="ts">
@@ -482,8 +483,36 @@
 	}
 
 	function onmousedown(e: MouseEvent) {
-		// Shift-click extends the verse selection, not the text selection (chosen words it does extend).
+		// Shift-click / shift-drag selects whole verses, not the text selection.
 		if (e.shiftKey && verseAt(e) && !app.wordSpan()) e.preventDefault();
+	}
+
+	/** Verse where a shift/touch drag for a whole-verse range began. */
+	let verseDrag: VerseRef | null = null;
+
+	function onpointerdown(e: PointerEvent) {
+		app.touch = e.pointerType !== 'mouse';
+		const v = verseAt(e);
+		if (!v || e.button !== 0) return;
+		// Shift-drag (mouse) or a touch drag selects a whole-verse range; plain mouse drag chooses words.
+		if (e.shiftKey || e.pointerType === 'touch') {
+			e.preventDefault();
+			verseDrag = v;
+			app.setSelectionRange([v, v]);
+			(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+		}
+	}
+
+	function onpointermove(e: PointerEvent) {
+		if (!verseDrag) return;
+		const v = verseAt(e);
+		if (v && v.book === verseDrag.book && v.chapter === verseDrag.chapter) {
+			app.setSelectionRange([verseDrag, v]);
+		}
+	}
+
+	function onpointerup() {
+		verseDrag = null;
 	}
 
 	// ------------------------------------------------------------------ chosen words
@@ -630,10 +659,6 @@
 		});
 	});
 
-	function onpointerdown(e: PointerEvent) {
-		app.touch = e.pointerType !== 'mouse';
-	}
-
 	// ------------------------------------------------------------------ the handle
 
 	const handle: ReaderHandle = {
@@ -736,6 +761,9 @@
 		{oncontextmenu}
 		{onmousedown}
 		{onpointerdown}
+		{onpointermove}
+		onpointerup={onpointerup}
+		onpointercancel={onpointerup}
 		role="document"
 	>
 		{#each indices as index (index)}

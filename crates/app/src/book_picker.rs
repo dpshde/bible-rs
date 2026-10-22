@@ -225,7 +225,7 @@ fn books(
     };
     let b = BookId(i as u8);
     if b.chapters() == 1 {
-        actions.push(Action::Jump { chapter: b.first_chapter(), verse: None, flash: false });
+        actions.push(Action::Jump { chapter: b.first_chapter(), verse: None, verse_end: None, flash: false });
         ui.close();
     } else {
         state.book = Some(b);
@@ -327,6 +327,7 @@ fn chapters(
         actions.push(Action::Jump {
             chapter: ChapterIdx::new(b, i as u8 + 1).expect("a chapter of the book"),
             verse: None,
+            verse_end: None,
             flash: false,
         });
         ui.close();

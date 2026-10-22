@@ -112,7 +112,13 @@
 						: `${name(r.book)} ${r.chapter}:${r.verse}`
 					: `${name(r.book)} ${r.chapter}`;
 				const text = verseText(r);
-				const jump: Action = { type: 'jump', chapter: r.chapterIndex, verse: r.verse ?? undefined, flash: !!r.verse };
+				const jump: Action = {
+					type: 'jump',
+					chapter: r.chapterIndex,
+					verse: r.verse ?? undefined,
+					verseEnd: r.verseEnd && r.verse && r.verseEnd > r.verse ? r.verseEnd : undefined,
+					flash: !!r.verse
+				};
 				out.push({
 					section: 'Go to',
 					icon: r.verse ? 'book' : 'list',
@@ -199,6 +205,8 @@
 					type: 'jump',
 					chapter: first.chapterIndex,
 					verse: first.verse ?? undefined,
+					verseEnd:
+						first.verseEnd && first.verse && first.verseEnd > first.verse ? first.verseEnd : undefined,
 					flash: !!first.verse
 				};
 				out.push(

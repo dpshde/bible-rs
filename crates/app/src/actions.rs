@@ -13,6 +13,8 @@ pub enum Action {
     Jump {
         chapter: ChapterIdx,
         verse: Option<u8>,
+        /// Inclusive end of a same-chapter verse range; every verse through it is selected on land.
+        verse_end: Option<u8>,
         flash: bool,
     },
     Back,

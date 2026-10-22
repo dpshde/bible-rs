@@ -407,6 +407,7 @@ impl State {
                                 actions.push(Action::Jump {
                                     chapter: v.chapter_idx(),
                                     verse: Some(v.verse),
+                                    verse_end: None,
                                     flash: true,
                                 });
                             }
@@ -605,6 +606,7 @@ impl State {
                     actions.push(Action::Jump {
                         chapter: r.chapter_idx(),
                         verse: Some(r.verse),
+                        verse_end: None,
                         flash: true,
                     });
                 }
