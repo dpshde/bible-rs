@@ -205,7 +205,7 @@ impl State {
             && let Some(c) = s.chapter_idx()
         {
             actions.push(Action::SetTranslation(s.translation.clone()));
-            actions.push(Action::Jump { chapter: c, verse: None, flash: false });
+            actions.push(Action::Jump { chapter: c, verse: None, verse_end: None, flash: false });
         }
     }
 

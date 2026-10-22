@@ -958,5 +958,5 @@ impl State {
 
 fn open_passage(p: &Passage, actions: &mut Vec<Action>) {
     let verse = p.verses.map(|(a, _)| a);
-    actions.push(Action::Jump { chapter: p.chapter, verse, flash: verse.is_some() });
+    actions.push(Action::Jump { chapter: p.chapter, verse, verse_end: None, flash: verse.is_some() });
 }

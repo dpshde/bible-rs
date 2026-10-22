@@ -20,11 +20,20 @@ impl Reference {
         VerseRef::new(self.book, self.chapter, self.verse.unwrap_or(1))
     }
 
+    /// Inclusive end of a same-chapter verse range, when one was typed past the start.
+    /// Cross-chapter ranges are not parsed; the end stays within this chapter.
+    pub fn range_end(&self) -> Option<u8> {
+        match (self.verse, self.verse_end) {
+            (Some(a), Some(b)) if b > a => Some(b),
+            _ => None,
+        }
+    }
+
     pub fn display(&self) -> String {
         let mut s = format!("{} {}", self.book.ref_name(), self.chapter);
         if let Some(v) = self.verse {
             s.push_str(&format!(":{v}"));
-            if let Some(e) = self.verse_end.filter(|&e| e > v) {
+            if let Some(e) = self.range_end() {
                 s.push_str(&format!("–{e}"));
             }
         }
@@ -236,6 +245,7 @@ mod tests {
         assert_eq!(p("Song of Songs 2"), "Song of Solomon 2");
         assert_eq!(p("jude 3"), "Jude 1:3");
         assert_eq!(p("phil 4:13"), "Philippians 4:13");
+        assert_eq!(p("phil 4:11-13"), "Philippians 4:11–13");
         assert_eq!(p("phlm"), "Philemon 1");
         assert_eq!(p("mt 5"), "Matthew 5");
         assert_eq!(p("mk 1"), "Mark 1");
@@ -244,6 +254,22 @@ mod tests {
         assert_eq!(p("deut 6:4"), "Deuteronomy 6:4");
         assert_eq!(p("ecc 3"), "Ecclesiastes 3");
         assert_eq!(p("eph 2:8-9"), "Ephesians 2:8–9");
+    }
+
+    #[test]
+    fn verse_ranges_stay_in_one_chapter() {
+        let r = parse("Phil 4:11-13").unwrap();
+        assert_eq!(r.book.name(), "Philippians");
+        assert_eq!(r.verse, Some(11));
+        assert_eq!(r.range_end(), Some(13));
+        assert_eq!(r.verse_ref().verse, 11);
+        // Cross-chapter forms like "John 3:16-4:2" are not parsed as a range across chapters;
+        // only three numbers are read, so the end is treated as a verse in the start chapter.
+        let cross = parse("John 3:16-4:2").unwrap();
+        assert_eq!(cross.chapter, 3);
+        assert_eq!(cross.verse, Some(16));
+        assert_eq!(cross.verse_end, Some(4)); // not a chapter; ignored by range_end
+        assert_eq!(cross.range_end(), None);
     }
 
     #[test]

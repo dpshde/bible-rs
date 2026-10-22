@@ -112,7 +112,7 @@ fn the_keyboard_chooses_a_book_and_a_chapter() {
         harness.run();
     }
     let chapter = ChapterIdx::new(GALATIANS, 2).unwrap();
-    assert_eq!(*harness.state(), vec![Action::Jump { chapter, verse: None, flash: false }]);
+    assert_eq!(*harness.state(), vec![Action::Jump { chapter, verse: None, verse_end: None, flash: false }]);
     assert!(!book_picker::is_open(&harness.ctx), "choosing a chapter closes the picker");
 }
 

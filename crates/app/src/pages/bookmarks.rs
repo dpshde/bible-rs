@@ -155,7 +155,12 @@ impl State {
 }
 
 fn open(v: VerseRef, actions: &mut Vec<Action>) {
-    actions.push(Action::Jump { chapter: v.chapter_idx(), verse: Some(v.verse), flash: true });
+    actions.push(Action::Jump {
+        chapter: v.chapter_idx(),
+        verse: Some(v.verse),
+        verse_end: None,
+        flash: true,
+    });
 }
 
 /// An empty page: the state optically centred in the page under the toolbar, below the header.
@@ -173,7 +178,7 @@ pub(super) fn empty_page(
     let buttons = empty.show(ui, p, content.center().x, top, room);
     if buttons.first().is_some_and(|r| r.clicked()) {
         let john = bible_core::ChapterIdx::new(bible_core::BookId(42), 1).expect("John 1");
-        actions.push(Action::Jump { chapter: john, verse: None, flash: false });
+        actions.push(Action::Jump { chapter: john, verse: None, verse_end: None, flash: false });
         actions.push(Action::OpenPage(Page::Reader));
     }
     if buttons.get(1).is_some_and(|r| r.clicked()) {

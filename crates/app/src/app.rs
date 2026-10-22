@@ -600,14 +600,20 @@ impl BibleApp {
 
     fn apply_one(&mut self, ctx: &egui::Context, a: Action) {
         match a {
-            Action::Jump { chapter, verse, flash } => {
+            Action::Jump { chapter, verse, verse_end, flash } => {
                 self.pages.open(crate::pages::Page::Reader);
                 self.jump(chapter, verse, flash);
-                // Landing on a specific verse selects it, so N/B/C/1–6 act on it right away. Anywhere
-                // else, a selection left from before would send J/K back to where it was.
-                let landed =
-                    verse.filter(|_| flash).map(|v| VerseRef::new(chapter.book(), chapter.chapter(), v));
-                self.reader.set_selection(landed);
+                // Landing on a specific verse selects it (or its range), so N/B/C/1–6 act on it
+                // right away. Anywhere else, a selection left from before would send J/K back.
+                let landed = verse.filter(|_| flash).map(|v| {
+                    let from = VerseRef::new(chapter.book(), chapter.chapter(), v);
+                    let to = verse_end
+                        .filter(|&e| e > v)
+                        .map(|e| VerseRef::new(chapter.book(), chapter.chapter(), e))
+                        .unwrap_or(from);
+                    (from, to)
+                });
+                self.reader.set_selection_range(landed);
             }
             // From a page, Back returns to the reader.
             Action::Back if !self.pages.reader() => self.pages.open(crate::pages::Page::Reader),
@@ -977,11 +983,20 @@ impl BibleApp {
                     actions.push(Action::Jump {
                         chapter: r.chapter_idx(),
                         verse: r.verse,
+                        verse_end: r.range_end(),
                         flash: r.verse.is_some(),
                     });
                 }
             }
-            "select" => self.reader.set_selection(verse()),
+            "select" => {
+                if let Some(r) = bible_core::reference::parse(arg) {
+                    let from = r.verse_ref();
+                    let to = r.range_end().map(|e| VerseRef::new(r.book, r.chapter, e)).unwrap_or(from);
+                    self.reader.set_selection_range(Some((from, to)));
+                } else {
+                    self.reader.set_selection(None);
+                }
+            }
             "palette" => self.palette = Some(CommandPalette::with_query(arg)),
             "search" => actions.push(Action::OpenSearch(Some(arg.to_string()))),
             "step" => actions.push(Action::SearchStep(arg.parse().unwrap_or(1))),

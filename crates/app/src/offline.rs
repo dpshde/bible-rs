@@ -191,7 +191,7 @@ fn page(
         if widgets::pill_tab(ui, p, r, &label, None, None, false, ui.id().with(("offline-pill", c.0)))
             .clicked()
         {
-            actions.push(Action::Jump { chapter: c, verse: None, flash: false });
+            actions.push(Action::Jump { chapter: c, verse: None, verse_end: None, flash: false });
         }
         x += w + 4.0;
     }

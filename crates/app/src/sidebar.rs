@@ -335,6 +335,7 @@ impl Sidebar {
                                     actions.push(Action::Jump {
                                         chapter: *c,
                                         verse: Some(*v),
+                                        verse_end: None,
                                         flash: *v > 1,
                                     });
                                 }
@@ -503,6 +504,7 @@ impl Sidebar {
                                     actions.push(Action::Jump {
                                         chapter: b.first_chapter(),
                                         verse: None,
+                                        verse_end: None,
                                         flash: false,
                                     });
                                 } else {
@@ -598,7 +600,12 @@ impl Sidebar {
             };
             let resp = list_item(ui, p, &item);
             if resp.clicked() {
-                actions.push(Action::Jump { chapter: v.chapter_idx(), verse: Some(v.verse), flash: true });
+                actions.push(Action::Jump {
+                    chapter: v.chapter_idx(),
+                    verse: Some(v.verse),
+                    verse_end: None,
+                    flash: true,
+                });
             }
             resp.context_menu(|ui| {
                 let (label, a) = match kind {
@@ -1031,7 +1038,12 @@ impl Sidebar {
         if let Some(vi) = jump_to
             && let Some(v) = t.verse_view(vi)
         {
-            actions.push(Action::Jump { chapter: v.chapter, verse: Some(v.number), flash: true });
+            actions.push(Action::Jump {
+                chapter: v.chapter,
+                verse: Some(v.number),
+                verse_end: None,
+                flash: true,
+            });
         }
     }
 }
@@ -1507,7 +1519,7 @@ fn chapter_grid(
         };
         painter.text(chip.center(), Align2::CENTER_CENTER, (i + 1).to_string(), font, color);
         if resp.clicked() {
-            actions.push(Action::Jump { chapter: idx, verse: None, flash: false });
+            actions.push(Action::Jump { chapter: idx, verse: None, verse_end: None, flash: false });
         }
     }
 }

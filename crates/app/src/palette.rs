@@ -176,7 +176,7 @@ impl CommandPalette {
             first_ref = refs.first().copied();
             for r in refs.iter().take(3) {
                 let title = match r.verse {
-                    Some(v) => match r.verse_end.filter(|&e| e > v) {
+                    Some(v) => match r.range_end() {
                         Some(e) => format!("{} {}:{v}–{e}", name(r.book), r.chapter),
                         None => format!("{} {}:{v}", name(r.book), r.chapter),
                     },
@@ -192,8 +192,12 @@ impl CommandPalette {
                     ),
                     None => (icons::list, chapter_detail(translation.as_deref(), r.chapter_idx())),
                 };
-                let jump =
-                    Action::Jump { chapter: r.chapter_idx(), verse: r.verse, flash: r.verse.is_some() };
+                let jump = Action::Jump {
+                    chapter: r.chapter_idx(),
+                    verse: r.verse,
+                    verse_end: r.range_end(),
+                    flash: r.verse.is_some(),
+                };
                 items.push(Item {
                     section: Section::GoTo,
                     icon,
@@ -209,7 +213,8 @@ impl CommandPalette {
             // The first reference's chapter, when it named a verse.
             if let Some(r) = first_ref.filter(|r| r.verse.is_some()) {
                 let title = format!("{} {}", name(r.book), r.chapter);
-                let jump = Action::Jump { chapter: r.chapter_idx(), verse: None, flash: false };
+                let jump =
+                    Action::Jump { chapter: r.chapter_idx(), verse: None, verse_end: None, flash: false };
                 items.push(Item {
                     section: Section::GoTo,
                     icon: icons::list,
@@ -250,7 +255,7 @@ impl CommandPalette {
                 )
             };
             let detail = if s.furthest <= 1 && !s.finished() { "started".to_string() } else { detail };
-            let jump = Action::Jump { chapter: c, verse, flash: false };
+            let jump = Action::Jump { chapter: c, verse, verse_end: None, flash: false };
             items.push(Item {
                 section: Section::Recent,
                 icon: icons::history,
@@ -301,8 +306,12 @@ impl CommandPalette {
                     ));
                 }
                 let title = format!("Open {} {} in parallel", name(r.book), r.chapter);
-                let jump =
-                    Action::Jump { chapter: r.chapter_idx(), verse: r.verse, flash: r.verse.is_some() };
+                let jump = Action::Jump {
+                    chapter: r.chapter_idx(),
+                    verse: r.verse,
+                    verse_end: r.range_end(),
+                    flash: r.verse.is_some(),
+                };
                 items.push(command(
                     icons::columns,
                     title,

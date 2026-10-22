@@ -6,8 +6,9 @@
 //! Layouts are cached per chapter and invalidated when typography, width, theme or the set of
 //! columns changes; a verse anchor keeps the reading position stable across those changes.
 //!
-//! Clicking a verse selects it, shift-click extends the selection to whole verses; dragging across
-//! the text chooses words, within one chapter, for a highlight of just those words.
+//! Clicking a verse selects it, shift-click extends the selection to whole verses, and shift-drag
+//! (or a touch drag) selects a verse range within one chapter. Dragging across the text without
+//! shift chooses words, within one chapter, for a highlight of just those words.
 
 pub mod layout;
 
@@ -116,6 +117,8 @@ pub struct Reader {
     words_in: String,
     /// A drag choosing words is under way.
     dragging_text: bool,
+    /// A drag selecting a whole-verse range: the verse where it began.
+    dragging_verses: Option<VerseRef>,
     /// Where each chapter painted this frame has its top-left corner, to find text under a point.
     painted: Vec<(ChapterIdx, Vec2)>,
     flash: Option<(VerseRef, f64)>,
@@ -162,6 +165,7 @@ impl Reader {
             text_selection: None,
             words_in: String::new(),
             dragging_text: false,
+            dragging_verses: None,
             painted: Vec::new(),
             flash: None,
             pending_jump: None,
@@ -239,8 +243,20 @@ impl Reader {
     }
 
     pub fn set_selection(&mut self, v: Option<VerseRef>) {
+        self.set_selection_range(v.map(|v| (v, v)));
+    }
+
+    /// Selects an inclusive verse range (same chapter), or clears the selection.
+    pub fn set_selection_range(&mut self, range: Option<(VerseRef, VerseRef)>) {
         self.text_selection = None;
-        self.selection = v.map(|v| (v, v));
+        self.dragging_verses = None;
+        self.selection = range.map(|(a, b)| {
+            if a.book == b.book && a.chapter == b.chapter {
+                if b.verse >= a.verse { (a, b) } else { (b, a) }
+            } else {
+                (a, a)
+            }
+        });
     }
 
     /// Moves a single-verse selection by `delta` verses (within the chapter, else across).
@@ -789,19 +805,52 @@ impl Reader {
         // Interaction.
         if self.dragging_text {
             ui.ctx().set_cursor_icon(CursorIcon::Text);
-        } else if marker_hit.is_some() || hit.is_some() {
+        } else if marker_hit.is_some() || hit.is_some() || self.dragging_verses.is_some() {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
-        // Dragging across the text chooses words, from where the press was.
+        // Shift-drag or a touch drag selects a whole-verse range; plain mouse drag chooses words.
         if resp.drag_started_by(egui::PointerButton::Primary)
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
-            && let Some(at) = self.text_pos_at(origin, None)
         {
-            self.words_in = env.columns.get(at.column).cloned().unwrap_or_default();
-            self.select_text(TextSelection { anchor: at, head: at });
-            self.dragging_text = true;
+            let (shift, touch) = ui.input(|i| {
+                (i.modifiers.shift, i.events.iter().any(|e| matches!(e, egui::Event::Touch { .. })))
+            });
+            let start = self.verse_at(origin).or(hit);
+            if (shift || touch)
+                && let Some(v) = start
+            {
+                self.dragging_text = false;
+                self.text_selection = None;
+                self.dragging_verses = Some(v);
+                self.selection = Some((v, v));
+            } else if let Some(at) = self.text_pos_at(origin, None) {
+                self.dragging_verses = None;
+                self.words_in = env.columns.get(at.column).cloned().unwrap_or_default();
+                self.select_text(TextSelection { anchor: at, head: at });
+                self.dragging_text = true;
+            }
         }
-        if self.dragging_text {
+        if let Some(anchor) = self.dragging_verses {
+            if resp.dragged() {
+                if let Some(pt) = resp.interact_pointer_pos() {
+                    if let Some(v) =
+                        self.verse_at(pt).filter(|v| v.book == anchor.book && v.chapter == anchor.chapter)
+                    {
+                        self.selection =
+                            Some(if v.verse >= anchor.verse { (anchor, v) } else { (v, anchor) });
+                    }
+                    // Near the top or bottom edge the text scrolls, to cover more verses.
+                    let (top, bottom) = (rect.top() + env.toolbar + self.em, rect.bottom() - self.em);
+                    let push = if pt.y < top { pt.y - top } else { (pt.y - bottom).max(0.0) };
+                    if push != 0.0 {
+                        self.scroll_by(push.clamp(-60.0, 60.0) * 0.25);
+                        ui.ctx().request_repaint();
+                    }
+                }
+            } else {
+                self.dragging_verses = None;
+            }
+        } else if self.dragging_text {
             if resp.dragged()
                 && let (Some(pt), Some(t)) = (resp.interact_pointer_pos(), self.text_selection)
             {
@@ -861,6 +910,11 @@ impl Reader {
         }
 
         self.paint_scrollbar(ui, &bar, &bar_resp, p, env);
+    }
+
+    /// The verse under `pt`, if any (same hit area as a click).
+    fn verse_at(&self, pt: Pos2) -> Option<VerseRef> {
+        self.text_pos_at(pt, None).map(|p| p.verse)
     }
 
     /// The place in the text at `pt`: in a block of verse text under it. While words are being
@@ -1093,5 +1147,38 @@ impl Geometry {
         let total_w = col_w * n + gutter * (n - 1.0);
         let x0 = px(rect.center().x - total_w / 2.0);
         Self { x0, col_w, gutter, total_w }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bible_core::books::BookId;
+
+    const JOHN: BookId = BookId(42);
+
+    fn v(n: u8) -> VerseRef {
+        VerseRef::new(JOHN, 3, n)
+    }
+
+    #[test]
+    fn selection_range_covers_every_verse() {
+        let mut r = Reader::new(ChapterIdx::new(JOHN, 3).unwrap(), 1);
+        r.set_selection_range(Some((v(11), v(13))));
+        assert_eq!(r.selected_refs(), vec![v(11), v(12), v(13)]);
+        r.set_selection_range(Some((v(13), v(11))));
+        assert_eq!(r.selection, Some((v(11), v(13))), "ends are ordered");
+        r.set_selection(Some(v(16)));
+        assert_eq!(r.selected_refs(), vec![v(16)]);
+        r.set_selection_range(None);
+        assert!(r.selected_refs().is_empty());
+    }
+
+    #[test]
+    fn selection_range_stays_in_one_chapter() {
+        let mut r = Reader::new(ChapterIdx::new(JOHN, 3).unwrap(), 1);
+        let other = VerseRef::new(JOHN, 4, 1);
+        r.set_selection_range(Some((v(16), other)));
+        assert_eq!(r.selected_refs(), vec![v(16)], "cross-chapter collapses to the start");
     }
 }
