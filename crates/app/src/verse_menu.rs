@@ -24,6 +24,8 @@ enum Line {
         shortcut: &'static str,
         action: Option<Action>,
     },
+    /// A starred Open in › destination (adapter id, name): opens straight away.
+    Starred(String, String),
     /// Opens the Open in › flyout; not a closing action by itself.
     OpenIn,
     Separator,
@@ -48,7 +50,7 @@ impl VerseMenu {
         self
     }
 
-    fn lines(study: &StudyStore, refs: &[VerseRef]) -> Vec<Line> {
+    fn lines(study: &StudyStore, refs: &[VerseRef], catalog: &Catalog, starred: &[String]) -> Vec<Line> {
         let first = refs[0];
         let item = |icon: IconFn, label: &str, shortcut: &'static str, action: Option<Action>| Line::Item {
             icon,
@@ -56,7 +58,7 @@ impl VerseMenu {
             shortcut,
             action,
         };
-        vec![
+        let mut lines = vec![
             item(
                 icons::note,
                 if study.note(first).is_some() { "Edit Note…" } else { "Add Note…" },
@@ -76,10 +78,16 @@ impl VerseMenu {
             Line::Separator,
             item(icons::compare, "Compare Translations", "C", Some(Action::Compare)),
             item(icons::columns, "Open in Parallel", "⇧⌘P", Some(Action::ToggleParallel)),
+        ];
+        lines.extend(
+            catalog.starred(starred).into_iter().map(|a| Line::Starred(a.id.clone(), a.name.clone())),
+        );
+        lines.extend([
             Line::OpenIn,
             Line::Separator,
             item(icons::text_cursor, "Select Verse Range", "⇧-click", None),
-        ]
+        ]);
+        lines
     }
 
     /// Returns `true` when the menu should close.
@@ -99,12 +107,14 @@ impl VerseMenu {
         if refs.is_empty() {
             return true;
         }
-        let lines = Self::lines(study, refs);
+        let lines = Self::lines(study, refs, catalog, &settings.open_in_starred);
         let open_in_idx = lines.iter().position(|l| matches!(l, Line::OpenIn));
         let enabled: Vec<usize> = lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| matches!(l, Line::Item { action: Some(_), .. } | Line::OpenIn))
+            .filter(|(_, l)| {
+                matches!(l, Line::Item { action: Some(_), .. } | Line::Starred(..) | Line::OpenIn)
+            })
             .map(|(i, _)| i)
             .collect();
         // When the Open in flyout is open it owns arrow keys / enter / typing.
@@ -144,11 +154,18 @@ impl VerseMenu {
             if self.open_in.is_none() {
                 self.open_in = Some(OpenInMenu::new(self.pos));
             }
-        } else if enter
-            && let Some(Line::Item { action: Some(a), .. }) = self.highlighted.and_then(|h| lines.get(h))
-        {
-            actions.push(a.clone());
-            return true;
+        } else if enter {
+            match self.highlighted.and_then(|h| lines.get(h)) {
+                Some(Line::Item { action: Some(a), .. }) => {
+                    actions.push(a.clone());
+                    return true;
+                }
+                Some(Line::Starred(id, _)) => {
+                    actions.push(Action::OpenIn(id.clone()));
+                    return true;
+                }
+                _ => {}
+            }
         }
 
         let height = PADDING_Y
@@ -227,6 +244,29 @@ impl VerseMenu {
                             menu::paint_separator(ui.painter(), p, left, right, y);
                             y += SEPARATOR_HEIGHT;
                         }
+                        Line::Starred(id, name) => {
+                            let r = Rect::from_x_y_ranges(left..=right, y..=y + ITEM_HEIGHT);
+                            let resp = ui.interact(r, ui.id().with(("menu-starred", id)), Sense::click());
+                            if resp.hovered() && ui.input(|inp| inp.pointer.delta() != egui::Vec2::ZERO) {
+                                self.highlighted = Some(i);
+                                self.open_in = None;
+                            }
+                            let tex = crate::open_in_menu::adapter_texture(ctx, id);
+                            crate::open_in_menu::paint_adapter_row(
+                                ui.painter(),
+                                p,
+                                r,
+                                name,
+                                tex.as_ref(),
+                                self.highlighted == Some(i),
+                                resp.is_pointer_button_down_on(),
+                            );
+                            if resp.clicked() {
+                                actions.push(Action::OpenIn(id.clone()));
+                                close = true;
+                            }
+                            y += ITEM_HEIGHT;
+                        }
                         Line::OpenIn => {
                             let r = Rect::from_x_y_ranges(left..=right, y..=y + ITEM_HEIGHT);
                             let resp = ui.interact(r, ui.id().with(("menu-item", i)), Sense::click());
@@ -285,7 +325,7 @@ impl VerseMenu {
         );
         if let (Some(menu), Some(row)) = (self.open_in.as_mut(), open_in_row) {
             menu.pos = pos2(row.right() + 4.0, row.top());
-            if menu.show(ctx, p, catalog, actions) {
+            if menu.show(ctx, p, catalog, &settings.open_in_starred, actions) {
                 // Esc / click-elsewhere on the flyout: close only the flyout unless an OpenIn fired.
                 let opened = actions.iter().any(|a| matches!(a, Action::OpenIn(_)));
                 self.open_in = None;

@@ -1,0 +1,124 @@
+// Generates bible-rs's route.bible parity data from route.bible's own TypeScript:
+//   crates/core/src/open_in_tables.rs                     (book variants, translation maps, geo chapters)
+//   crates/core/tests/fixtures/route-bible-parity.json    (template values + rendered URLs)
+// Run from a route.bible checkout (needs its node_modules for esbuild):
+//   scripts/route-bible-parity/run <route.bible checkout>
+import { writeFileSync, readFileSync } from "node:fs";
+import { OSIS_BOOK_CODES, OSIS_BOOK_NAMES } from "rb/packages/grab-bcv/src/index";
+import { parsePassage } from "rb/packages/grab-bcv/src/parser";
+import { getServiceBookVariant, getBibleProjectGuideSlug } from "rb/packages/route-bible-adapters/src/book-variants";
+import { buildAdapterTemplateContext } from "rb/packages/route-bible-adapters/src/context";
+import { buildAdapterTemplateReplacements, renderAdapterTemplate } from "rb/packages/route-bible-adapters/src/registry";
+
+const out = process.env.BIBLE_RS_DIR!;
+const rbDir = process.env.ROUTE_BIBLE_DIR!;
+
+// The translation maps and geo chapter lists are module-private in context.ts; lift the object
+// literals out of the source so the tables can't drift from it.
+function constObject(name: string): Record<string, any> {
+  const src = readFileSync(`${rbDir}/packages/route-bible-adapters/src/context.ts`, "utf8");
+  const start = src.indexOf(`const ${name}`);
+  if (start < 0) throw new Error(`context.ts: ${name} not found`);
+  const open = src.indexOf("= {", start) + 2;
+  const close = src.indexOf("\n};", open);
+  return new Function(`return (${src.slice(open, close + 2)});`)();
+}
+
+function mapFn(fnName: string, constName: string, doc: string): string {
+  const m = constObject(constName);
+  const arms = Object.entries(m).map(([k, v]) => `        ${JSON.stringify(k)} => Some(${JSON.stringify(v)}),`);
+  return `\n/// ${doc}\n#[rustfmt::skip]\npub fn ${fnName}(code: &str) -> Option<&'static str> {\n    match code {\n${arms.join("\n")}\n        _ => None,\n    }\n}\n`;
+}
+
+function tables(): string {
+  const yv = constObject("YOUVERSION_VERSION_MAP");
+  const yvArms = Object.entries(yv).map(([k, v]: any) => `        ${JSON.stringify(k)} => Some((${JSON.stringify(v.versionId)}, ${JSON.stringify(v.translationCode)})),`);
+  const geo = constObject("OPEN_BIBLE_GEO_CHAPTERS_WITH_PLACES");
+  const geoArms = Object.entries(geo).map(([k, v]: any) => `        ${JSON.stringify(k)} => &[${v.join(", ")}],`);
+  return [
+    `\n/// YouVersion (version id, translation code) by route.bible translation code.\n#[rustfmt::skip]\npub fn youversion(code: &str) -> Option<(&'static str, &'static str)> {\n    match code {\n${yvArms.join("\n")}\n        _ => None,\n    }\n}\n`,
+    mapFn("bolls", "BOLLS_TRANSLATION_MAP", "bolls.life translation."),
+    mapFn("simply_my_bible", "SIMPLY_MY_BIBLE_TRANSLATION_MAP", "simplymybible.com translation."),
+    mapFn("type_the_word", "TYPE_THE_WORD_TRANSLATION_MAP", "typetheword.site translation."),
+    mapFn("step_bible", "STEP_BIBLE_TRANSLATION_MAP", "STEP Bible translation."),
+    mapFn("bible_is", "BIBLE_IS_TRANSLATION_MAP", "Bible.is translation."),
+    mapFn("study_light", "STUDY_LIGHT_TRANSLATION_MAP", "StudyLight translation."),
+    mapFn("study_bible", "STUDY_BIBLE_TRANSLATION_MAP", "studybible.info translation."),
+    mapFn("biblia", "BIBLIA_TRANSLATION_MAP", "Biblia translation."),
+    mapFn("literal_word", "LITERAL_WORD_TRANSLATION_MAP", "LiteralWord translation."),
+    `\n/// OpenBible geo chapters that have places, by geo book slug.\n#[rustfmt::skip]\npub fn open_bible_geo_chapters(slug: &str) -> &'static [u8] {\n    match slug {\n${geoArms.join("\n")}\n        _ => &[],\n    }\n}\n`,
+  ].join("");
+}
+const services = [
+  "bible-gateway", "slug", "bible-hub", "biblica", "enduring-word", "blue-letter-bible",
+  "type-the-word", "catena", "step-bible", "logos-ref-ly", "sermon-audio", "bible-is",
+] as const;
+
+// Open Bible geo slugs aren't exported; read them from the (built) context through a probe passage.
+const rows = OSIS_BOOK_CODES.map((code) => {
+  const p = parsePassage(`${OSIS_BOOK_NAMES[code]} 1`);
+  const geo = buildAdapterTemplateContext(p, "BSB").openBibleGeoPath ?? "";
+  const geoSlug = geo.split(".")[0];
+  const cells = services.map((s) => JSON.stringify(getServiceBookVariant(s, code)));
+  return `    BookVariants { code: ${JSON.stringify(code)}, name: ${cells[0]}, slug: ${cells[1]}, bible_hub: ${cells[2]}, biblica: ${cells[3]}, enduring_word: ${cells[4]}, blue_letter_bible: ${cells[5]}, type_the_word: ${cells[6]}, catena: ${cells[7]}, step_bible: ${cells[8]}, logos_ref_ly: ${cells[9]}, sermon_audio: ${cells[10]}, bible_is: ${cells[11]}, bible_project_guide: ${JSON.stringify(getBibleProjectGuideSlug(code) ?? "")}, open_bible_geo: ${JSON.stringify(geoSlug)} },`;
+});
+writeFileSync(`${out}/crates/core/src/open_in_tables.rs`, `//! Lookup tables for Open in › link expansion, exactly as route.bible builds them
+//! (\`book-variants.ts\`, \`context.ts\`). Generated by \`scripts/route-bible-parity\`; do not edit.
+
+/// One book's spelling for every service variant route.bible knows.
+pub struct BookVariants {
+    pub code: &'static str,
+    pub name: &'static str,
+    pub slug: &'static str,
+    pub bible_hub: &'static str,
+    pub biblica: &'static str,
+    pub enduring_word: &'static str,
+    pub blue_letter_bible: &'static str,
+    pub type_the_word: &'static str,
+    pub catena: &'static str,
+    pub step_bible: &'static str,
+    pub logos_ref_ly: &'static str,
+    pub sermon_audio: &'static str,
+    pub bible_is: &'static str,
+    /// BibleProject guide slug; empty when the book has no guide (search instead).
+    pub bible_project_guide: &'static str,
+    /// OpenBible geo slug; empty when the site has no page for the book.
+    pub open_bible_geo: &'static str,
+}
+
+#[rustfmt::skip]
+pub static BOOK_VARIANTS: [BookVariants; 66] = [
+${rows.join("\n")}
+];
+${tables()}`);
+
+const links = JSON.parse(readFileSync(`${out}/crates/core/data/adapters.links.json`, "utf8"));
+const webTemplates: Record<string, string> = {};
+for (const a of links.adapters) {
+  const usable = a.links.filter((l: any) => !l.platforms?.length || l.platforms.includes("web"));
+  const web = usable.find((l: any) => l.kind === "web") ?? usable[0];
+  if (web) webTemplates[a.id] = web.template;
+}
+const tricky = [
+  "Jonah 2:3", "Ezekiel 37:4", "Song of Songs 2:4", "Psalm 23", "Psalm 23:1-3", "Psalm 119:105",
+  "Philemon 1:6", "1 John 4:8", "Judges 6:12", "Joel 2:28", "Nahum 1:7", "John 3:16",
+  "Romans 5:3-5", "Genesis 1", "Revelation 22:21", "2 Thessalonians 3:16", "Obadiah 1:3", "Jude 1:3",
+];
+const cases: any[] = [];
+const push = (input: string, translation: string) => {
+  const p = parsePassage(input);
+  const vars = buildAdapterTemplateReplacements(buildAdapterTemplateContext(p, translation));
+  const urls: Record<string, string> = {};
+  for (const [id, template] of Object.entries(webTemplates)) {
+    urls[id] = renderAdapterTemplate(template, buildAdapterTemplateContext(p, translation, id));
+  }
+  cases.push({ input, canonical: p.canonical, translation, vars, urls });
+};
+for (const input of tricky) for (const t of ["BSB", "ESV", "KJV", "WEB"]) push(input, t);
+for (const t of ["ASV", "YLT", "DBY", "WBS", "NKJV", "NIV", "NLT", "CSB", "HCSB", "NASB", "NASB95", "NASB1995", "NRSV", "NRSV-CI", "NRSVUE", "NET", "WEBUS", "LEB", "LSB", "DARBY"]) push("John 3:16", t);
+for (const code of OSIS_BOOK_CODES) push(`${OSIS_BOOK_NAMES[code]} 1:1`, "BSB");
+writeFileSync(
+  `${out}/crates/core/tests/fixtures/route-bible-parity.json`,
+  JSON.stringify({ source: `route.bible adapters ${links.version}`, cases }, null, 1) + "\n",
+);
+console.log(`route-bible-parity: ${rows.length} books, ${cases.length} cases`);

@@ -1,8 +1,6 @@
 //! The "Open in ›" flyout on the verse menu: static adapters from the vendored links snapshot,
 //! grouped like route.bible, with vendored favicons and scroll that matches the reader's feel.
 
-use std::collections::HashMap;
-
 use bible_core::open_in::{Adapter, Catalog, Passage};
 use eframe::egui::{
     self, Align2, Color32, ColorImage, Key, Modifiers, Order, Pos2, Rect, Sense, TextureHandle,
@@ -48,20 +46,11 @@ pub struct OpenInMenu {
     opened: bool,
     /// Pixel offset into the scrollable content (0 = top).
     scroll_y: f32,
-    /// Lazily decoded vendored PNGs, keyed by adapter id.
-    textures: HashMap<String, TextureHandle>,
 }
 
 impl OpenInMenu {
     pub fn new(pos: Pos2) -> Self {
-        Self {
-            pos,
-            highlighted: Some(0),
-            filter: String::new(),
-            opened: false,
-            scroll_y: 0.0,
-            textures: HashMap::new(),
-        }
+        Self { pos, highlighted: Some(0), filter: String::new(), opened: false, scroll_y: 0.0 }
     }
 
     fn entries<'a>(catalog: &'a Catalog, filter: &str) -> (Vec<Entry<'a>>, Vec<&'a Adapter>) {
@@ -127,25 +116,13 @@ impl OpenInMenu {
         self.scroll_y = self.scroll_y.clamp(0.0, Self::max_scroll(entries, view_h));
     }
 
-    fn texture(&mut self, ctx: &egui::Context, id: &str) -> Option<TextureHandle> {
-        if let Some(t) = self.textures.get(id) {
-            return Some(t.clone());
-        }
-        let bytes = bible_core::open_in_icons::png(id)?;
-        let img = image::load_from_memory(bytes).ok()?.into_rgba8();
-        let size = [img.width() as usize, img.height() as usize];
-        let color = ColorImage::from_rgba_unmultiplied(size, img.as_raw());
-        let tex = ctx.load_texture(format!("open-in-icon-{id}"), color, TextureOptions::LINEAR);
-        self.textures.insert(id.to_string(), tex.clone());
-        Some(tex)
-    }
-
     /// Returns `true` when the flyout should close (and the parent verse menu with it on pick).
     pub fn show(
         &mut self,
         ctx: &egui::Context,
         p: &Palette,
         catalog: &Catalog,
+        starred: &[String],
         actions: &mut Vec<Action>,
     ) -> bool {
         let prev_filter = self.filter.clone();
@@ -228,7 +205,7 @@ impl OpenInMenu {
                 let y = Self::adapter_y(&entries, *i);
                 if y + ITEM_HEIGHT >= self.scroll_y - ITEM_HEIGHT && y <= self.scroll_y + list_h + ITEM_HEIGHT
                 {
-                    let _ = self.texture(ctx, &a.id);
+                    let _ = adapter_texture(ctx, &a.id);
                 }
             }
         }
@@ -313,17 +290,41 @@ impl OpenInMenu {
                                     self.highlighted = Some(*i);
                                 }
                                 let lit = self.highlighted == Some(*i);
-                                let tex = self.textures.get(&adapter.id);
+                                let tex = adapter_texture(ctx, &adapter.id);
                                 paint_adapter_row(
                                     &painter,
                                     p,
                                     r,
                                     adapter.name.as_str(),
-                                    tex,
+                                    tex.as_ref(),
                                     lit,
                                     hit.is_pointer_button_down_on(),
                                 );
-                                if hit.clicked() {
+                                // Star toggle at the trailing edge: shown on hover, kept when starred.
+                                let is_starred = starred.contains(&adapter.id);
+                                let star = Rect::from_center_size(
+                                    pos2(r.right() - tokens::ITEM_PADDING - icon::MENU / 2.0, r.center().y),
+                                    vec2(icon::MENU, icon::MENU),
+                                );
+                                let star_hit = ui.interact(
+                                    star.expand(4.0).intersect(list),
+                                    ui.id().with(("open-in-star", &adapter.id)),
+                                    Sense::click(),
+                                );
+                                if is_starred || hit.hovered() || star_hit.hovered() {
+                                    let ink = match (lit, star_hit.hovered()) {
+                                        (true, _) => p.on_accent,
+                                        (false, true) => p.ink,
+                                        (false, false) => p.ink_3,
+                                    };
+                                    icons::heavy(|| icons::star(&painter, star, ink, is_starred));
+                                }
+                                if star_hit.hovered() {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                }
+                                if star_hit.clicked() {
+                                    actions.push(Action::ToggleOpenInStar(adapter.id.clone()));
+                                } else if hit.clicked() {
                                     actions.push(Action::OpenIn(adapter.id.clone()));
                                     close = true;
                                 }
@@ -339,6 +340,31 @@ impl OpenInMenu {
             close = true;
         }
         close
+    }
+}
+
+/// An adapter's vendored favicon, decoded once and kept in the context's memory (shared by the
+/// flyout and the starred rows in the verse menu).
+pub fn adapter_texture(ctx: &egui::Context, id: &str) -> Option<TextureHandle> {
+    let key = egui::Id::new(("open-in-icon", id));
+    if let Some(t) = ctx.data(|d| d.get_temp::<TextureHandle>(key)) {
+        return Some(t);
+    }
+    let bytes = bible_core::open_in_icons::png(id)?;
+    let img = image::load_from_memory(bytes).ok()?.into_rgba8();
+    let size = [img.width() as usize, img.height() as usize];
+    let color = ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+    let tex = ctx.load_texture(format!("open-in-icon-{id}"), color, TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(key, tex.clone()));
+    Some(tex)
+}
+
+/// Stars `id`, or unstars it when it already is. New stars go last.
+pub fn toggle_star(starred: &mut Vec<String>, id: &str) {
+    if let Some(i) = starred.iter().position(|s| s == id) {
+        starred.remove(i);
+    } else {
+        starred.push(id.to_string());
     }
 }
 
@@ -365,7 +391,7 @@ fn paint_footer(painter: &egui::Painter, p: &Palette, r: Rect, hovered: bool) {
     );
 }
 
-fn paint_adapter_row(
+pub(crate) fn paint_adapter_row(
     painter: &egui::Painter,
     p: &Palette,
     r: Rect,
@@ -414,6 +440,28 @@ pub fn passage_from_selection(refs: &[bible_core::VerseRef]) -> Option<Passage> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn toggle_star_adds_last_and_removes() {
+        let mut starred = Vec::new();
+        toggle_star(&mut starred, "wedevote");
+        toggle_star(&mut starred, "bible-gateway");
+        assert_eq!(starred, ["wedevote", "bible-gateway"]);
+        toggle_star(&mut starred, "wedevote");
+        assert_eq!(starred, ["bible-gateway"]);
+    }
+
+    #[test]
+    fn stars_persist_in_settings() {
+        let mut settings = crate::app::Settings::default();
+        toggle_star(&mut settings.open_in_starred, "wedevote");
+        let json = serde_json::to_string(&settings).unwrap();
+        let back: crate::app::Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.open_in_starred, ["wedevote"]);
+        // Settings saved before stars existed load with none.
+        let old: crate::app::Settings = serde_json::from_str("{\"translation\":\"kjv\"}").unwrap();
+        assert!(old.open_in_starred.is_empty());
+    }
 
     #[test]
     fn footer_credits_route_bible() {

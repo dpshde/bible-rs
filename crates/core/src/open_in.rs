@@ -278,6 +278,21 @@ impl Catalog {
         sections
     }
 
+    /// Starred adapters in the order they were starred. Ids no longer in the catalog (removed
+    /// upstream) or not usable on desktop are left out.
+    pub fn starred<'a>(&'a self, ids: &[String]) -> Vec<&'a Adapter> {
+        let menu = self.menu_items();
+        let mut out: Vec<&Adapter> = Vec::new();
+        for id in ids {
+            if let Some(a) = menu.iter().copied().find(|a| &a.id == id)
+                && !out.iter().any(|o| o.id == a.id)
+            {
+                out.push(a);
+            }
+        }
+        out
+    }
+
     /// Flat list in section order (for tests / callers that do not draw headers).
     pub fn menu_items(&self) -> Vec<&Adapter> {
         self.menu_sections().into_iter().flat_map(|s| s.items).collect()
@@ -320,7 +335,9 @@ pub fn expand_adapter_url(
 ) -> Option<String> {
     let catalog = Catalog::bundled();
     let adapter = catalog.items.iter().find(|a| a.id == adapter_id)?;
-    let mut vars = passage.template_vars(translation, verse_text);
+    let mut vars =
+        open_in_context::template_replacements_for(passage, translation, verse_text, Some(adapter_id));
+    let normalized = open_in_context::normalize_translation(translation);
     // Translate templates still say `{{actionBody}}` in the feed — fill with raw verse text only.
     if adapter.is_translate() {
         vars.insert("actionBody", open_in_context::encoded_raw_text(verse_text));
@@ -340,8 +357,14 @@ pub fn expand_adapter_url(
         {
             continue;
         }
-        if let Some(url) = expand_template(&link.template, &vars)
-            && let Some(url) = finalize_desktop_url(url)
+        let template = crate::open_in_translations::template_for(adapter_id, &link.template, &normalized);
+        if let Some(url) = expand_template(&template, &vars)
+            // route.bible's renderAdapterTemplate keeps studybible.info's colons literal.
+            && let Some(url) = finalize_desktop_url(if template.contains("https://studybible.info/") {
+                url.replace("%3A", ":")
+            } else {
+                url
+            })
         {
             return Some(url);
         }
@@ -376,6 +399,16 @@ mod tests {
     }
     fn rom(n: u8) -> VerseRef {
         VerseRef::new(BookId(44), 5, n)
+    }
+
+    #[test]
+    fn starred_keeps_order_and_drops_unknown_ids() {
+        let catalog = Catalog::bundled();
+        let ids: Vec<String> =
+            ["wedevote", "exedra", "bible-gateway", "no-such-app", "wedevote"].map(String::from).to_vec();
+        let got: Vec<&str> = catalog.starred(&ids).iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(got, ["wedevote", "bible-gateway"]);
+        assert!(catalog.starred(&[]).is_empty());
     }
 
     #[test]

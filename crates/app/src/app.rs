@@ -59,6 +59,8 @@ pub struct Settings {
     pub share: crate::share_sheet::ShareOptions,
     /// Remind about the day's plan reading at 7:00 while the app is open.
     pub plan_reminder: bool,
+    /// Open in › destinations starred into the verse menu, by adapter id, in star order.
+    pub open_in_starred: Vec<String>,
     /// The first-launch screens are done. Settings saved before they existed count as done.
     #[serde(default = "yes")]
     pub onboarded: bool,
@@ -95,6 +97,7 @@ impl Default for Settings {
             backup_auto: true,
             backup_weekly: false,
             share: Default::default(),
+            open_in_starred: Vec::new(),
             onboarded: false,
         }
     }
@@ -802,6 +805,10 @@ impl BibleApp {
                         .unwrap_or(adapter_id.as_str());
                     self.toast(ctx, format!("Opening in {name}"));
                 }
+            }
+            Action::ToggleOpenInStar(id) => {
+                crate::open_in_menu::toggle_star(&mut self.settings.open_in_starred, &id);
+                self.settings.save(&mut self.study);
             }
             Action::ShareImage => {
                 let refs = self.reader.selected_refs();
@@ -1675,7 +1682,9 @@ impl BibleApp {
         ui.painter().hline(first.0 - pad..=last.0 + last.1 + pad, line, Stroke::new(1.0, p.separator));
         for (i, (x, _w)) in self.reader.columns_x.clone().into_iter().enumerate() {
             let Some(id) = cols.get(i) else { break };
-            let Some(meta) = self.library.get(id).map(|e| e.meta.clone()) else { continue };
+            let Some(meta) = self.library.get(id).map(|e| e.meta.clone()) else {
+                continue;
+            };
             let font = theme::text::UI_STRONG.font();
             let g = ui.painter().layout_no_wrap(meta.abbrev.clone(), font, p.ink);
             let pick = egui::Rect::from_min_size(egui::pos2(x, top), vec2(g.size().x + 4.0 + 12.0, 16.0));
@@ -1720,7 +1729,9 @@ impl BibleApp {
     /// While a search has results: "Result 5 of 7", a stepper and a hint, floating over the top
     /// of the text (frame 06).
     fn result_navigator(&mut self, ui: &mut Ui, reader_rect: egui::Rect, actions: &mut Vec<Action>) {
-        let Some((at, of)) = self.sidebar.result_position() else { return };
+        let Some((at, of)) = self.sidebar.result_position() else {
+            return;
+        };
         let p = self.settings.theme.palette();
         let painter = ui.painter();
         let font = theme::ui_medium(theme::text::SMALL.size);

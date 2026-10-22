@@ -150,9 +150,14 @@ fn try_refresh_feed(out_dir: &Path, staged_links: &Path, icons_out: &Path) -> Re
 
     let links_cache = cache.join("adapters.links.json");
     if !links_cache.is_file() {
-        let adapters =
-            manifest.get("adapters").ok_or_else(|| FeedError("manifest.adapters missing".into()))?;
-        let body = serde_json::to_vec_pretty(adapters).map_err(|e| FeedError(e.to_string()))?;
+        let adapters = manifest_adapters(&manifest)
+            .ok_or_else(|| FeedError("manifest.adapters must be an array".into()))?;
+        let links = serde_json::json!({
+            "version": version,
+            "generatedAt": manifest.get("generatedAt").cloned().unwrap_or_default(),
+            "adapters": adapters,
+        });
+        let body = serde_json::to_vec_pretty(&links).map_err(|e| FeedError(e.to_string()))?;
         fs::write(&links_cache, body).map_err(|e| FeedError(e.to_string()))?;
     }
     fs::copy(&links_cache, staged_links).map_err(|e| FeedError(e.to_string()))?;
@@ -180,7 +185,7 @@ fn try_refresh_feed(out_dir: &Path, staged_links: &Path, icons_out: &Path) -> Re
             .ok_or_else(|| FeedError(format!("icons[{id}].sha256")))?;
         let dest = icons_cache.join(format!("{id}.png"));
         if !dest.is_file() {
-            let body = fetch(&base, path)?;
+            let body = fetch(&base, feed_relative(path))?;
             let got = sha256_hex(&body);
             if got != expect {
                 return Err(FeedError(format!("icon {id} sha256 mismatch: got {got}, expected {expect}")));
@@ -224,6 +229,12 @@ fn try_refresh_feed(out_dir: &Path, staged_links: &Path, icons_out: &Path) -> Re
     Ok(version)
 }
 
+/// The feed's adapter list: `adapters: [...]` (live feed) or the older `adapters: { adapters: [...] }`.
+fn manifest_adapters(manifest: &serde_json::Value) -> Option<&Vec<serde_json::Value>> {
+    let adapters = manifest.get("adapters")?;
+    adapters.as_array().or_else(|| adapters.get("adapters").and_then(|v| v.as_array()))
+}
+
 fn validate_manifest(manifest: &serde_json::Value, latest: &str) -> Result<(), FeedError> {
     let schema = manifest.get("schemaVersion").and_then(|v| v.as_u64());
     if schema != Some(1) {
@@ -242,10 +253,8 @@ fn validate_manifest(manifest: &serde_json::Value, latest: &str) -> Result<(), F
     if version != latest {
         return Err(FeedError(format!("manifest.version={version:?} != latest.txt={latest:?}")));
     }
-    let adapters = manifest
-        .pointer("/adapters/adapters")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| FeedError("manifest.adapters.adapters must be an array".into()))?;
+    let adapters =
+        manifest_adapters(manifest).ok_or_else(|| FeedError("manifest.adapters must be an array".into()))?;
     let count = manifest
         .get("adapterCount")
         .and_then(|v| v.as_u64())
@@ -297,6 +306,11 @@ fn export_refresh(dest: &Path, links: &Path, icons: &Path, version: &str) -> Res
         }
     }
     Ok(())
+}
+
+/// Icon paths come feed-relative (`icons/x.png`) or site-absolute (`/adapters/v1/icons/x.png`).
+fn feed_relative(path: &str) -> &str {
+    path.rsplit_once("/adapters/v1/").map(|(_, rest)| rest).unwrap_or(path)
 }
 
 fn fetch(base: &str, rel: &str) -> Result<Vec<u8>, FeedError> {

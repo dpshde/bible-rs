@@ -32,7 +32,11 @@ fn fixture_manifest_matches_schema_v1() {
     assert_eq!(manifest["schemaVersion"], 1);
     assert_eq!(manifest["version"].as_str().unwrap(), latest);
     assert!(manifest["generatedAt"].as_str().is_some());
-    let adapters = manifest["adapters"]["adapters"].as_array().expect("adapters.adapters array");
+    // The live feed lists adapters directly; the first preview nested them under `adapters`.
+    let adapters = manifest["adapters"]
+        .as_array()
+        .or_else(|| manifest["adapters"]["adapters"].as_array())
+        .expect("adapters array");
     assert_eq!(manifest["adapterCount"].as_u64().unwrap() as usize, adapters.len());
     let icons = manifest["icons"].as_object().expect("icons object");
     assert!(!icons.is_empty());
@@ -40,7 +44,8 @@ fn fixture_manifest_matches_schema_v1() {
         let path = meta["path"].as_str().expect("icon.path");
         let sha = meta["sha256"].as_str().expect("icon.sha256");
         assert_eq!(sha.len(), 64, "icon {id} sha256 length");
-        let file = dir.join(path);
+        // Icon paths are feed-relative (`icons/x.png`) or site-absolute (`/adapters/v1/icons/x.png`).
+        let file = dir.join(path.rsplit_once("/adapters/v1/").map(|(_, rest)| rest).unwrap_or(path));
         assert!(file.is_file(), "missing icon file {path}");
         assert_eq!(sha256_file(&file), sha.to_ascii_lowercase(), "icon {id} sha256");
         assert_eq!(meta["width"], 64);
