@@ -66,7 +66,7 @@ typeset, searchable as you type, with highlights, notes and bookmarks kept on yo
 - Matches highlighted in the results; ↑ ↓ and ⏎ jump to the verse, which flashes.
 
 **Study**
-- Click a verse (⇧-click for a range, J/K to move) to select it, then: highlight in six colours
+- Click a verse (⇧-click or ⇧-drag for a range, J/K to move) to select it, then: highlight in six colours
   (1–6, 0 to clear), write a note (N), bookmark (B / ⌘D), copy (⌘C, or ⇧⌘C with the reference)
   or compare translations (C). Right-click opens the verse menu with all of these.
 - Drag across words (in a verse or across verses) to highlight or copy just them.
@@ -172,7 +172,7 @@ chapter by chapter, and appear in parallel and compare views as their chapters l
 | ← / → | Previous / next chapter |
 | ↑ ↓, Space, ⇧Space, PgUp/PgDn | Scroll |
 | ⌘[ / ⌘] (⌥← / ⌥→) | Back / forward |
-| Click, ⇧-click, J / K | Select a verse, a range, next / previous verse |
+| Click, ⇧-click, ⇧-drag, J / K | Select a verse, a range, next / previous verse |
 | Drag, ⇧-click | Choose words, extend them |
 | 1–6, 0 | Highlight colour, remove highlight |
 | N · B or ⌘D · ⌘C · ⇧⌘C · C | Note · bookmark · copy · copy with reference · compare |
