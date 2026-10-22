@@ -1,0 +1,1879 @@
+{
+  "version": "1",
+  "generatedAt": "2026-03-10T00:00:00.000Z",
+  "adapters": [
+    {
+      "id": "exedra",
+      "name": "Exedra",
+      "catalogType": "read",
+      "catalogSubtype": "bibles",
+      "keywords": [
+        "selah",
+        "route bible"
+      ],
+      "status": "degraded",
+      "confidence": "official",
+      "firstParty": true,
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-02-26T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "exedra://bible?reference={{passage}}",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "/{{passage}}?mode=launcher",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bible-app",
+      "name": "YouVersion",
+      "catalogType": "read",
+      "catalogSubtype": "bibles",
+      "keywords": [
+        "bible.com",
+        "you version"
+      ],
+      "featuredRank": 1,
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "webapp",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "youversion://bible?reference={{passage}}",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://www.bible.com/bible/{{youversionVersionId}}/{{passage}}.{{youversionTranslation}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "inksignal",
+      "name": "Inksignal",
+      "subtitle": "Focused reading",
+      "catalogType": "read",
+      "catalogSubtype": "bibles",
+      "keywords": [
+        "reading plan",
+        "focus"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "webapp",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-05T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "inksignal://bible?ref={{passage}}&v={{translation}}",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://inksignal.app/bible/{{passage}}/{{translation}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "type-the-word",
+      "name": "Type the Word",
+      "catalogType": "practice",
+      "catalogSubtype": "habits",
+      "keywords": [
+        "typing",
+        "memorization",
+        "practice"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter"
+      ],
+      "lastVerifiedAt": "2026-03-06T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.typetheword.site/passage/{{typeTheWordPath}}?translation={{typeTheWordTranslation}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anki",
+      "name": "Anki",
+      "catalogType": "practice",
+      "catalogSubtype": "habits",
+      "keywords": [
+        "anki",
+        "flashcards",
+        "memorization",
+        "spaced repetition"
+      ],
+      "status": "degraded",
+      "confidence": "experimental",
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter"
+      ],
+      "lastVerifiedAt": "2026-03-11T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "anki://x-callback-url/addnote?type=Basic&deck=Default&fldFront={{displayPassage}}&fldBack={{actionBody}}&tags=route-bible%20scripture",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://apps.ankiweb.net/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bible-gateway",
+      "name": "BibleGateway",
+      "catalogType": "read",
+      "catalogSubtype": "bibles",
+      "keywords": [
+        "bible gateway"
+      ],
+      "featuredRank": 2,
+      "status": "active",
+      "confidence": "official",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.biblegateway.com/passage/?search={{displayPassage}}&version={{translation}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "esv",
+      "name": "ESV",
+      "catalogType": "read",
+      "catalogSubtype": "bibles",
+      "keywords": [
+        "crossway",
+        "esv",
+        "english standard version"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-11T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.esv.org/{{displayPassage}}/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "net-bible",
+      "name": "NET Bible",
+      "catalogType": "read",
+      "catalogSubtype": "bibles",
+      "keywords": [
+        "net",
+        "net bible",
+        "biblical studies press"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-11T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://netbible.org/passage.php?passage={{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bible-hub",
+      "name": "Bible Hub",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "biblehub",
+        "interlinear",
+        "parallel"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://biblehub.com/{{bibleHubPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "studylight",
+      "name": "StudyLight",
+      "subtitle": "Interlinear study",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "studylight",
+        "commentaries",
+        "lexicons",
+        "interlinear"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter"
+      ],
+      "lastVerifiedAt": "2026-03-13T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.studylight.org/interlinear-study-bible/{{studyLightOriginalLanguage}}/{{bibleStudyToolsPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "open-bible-geo",
+      "name": "OpenBible.info",
+      "subtitle": "Bible Atlas",
+      "catalogType": "explore",
+      "catalogSubtype": "guides",
+      "keywords": [
+        "openbible",
+        "atlas",
+        "geography",
+        "maps",
+        "places"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter"
+      ],
+      "lastVerifiedAt": "2026-03-13T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.openbible.info/geo/preview/{{openBibleGeoPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "open-bible-crossrefs",
+      "name": "OpenBible.info",
+      "subtitle": "Cross refs",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "openbible",
+        "cross references",
+        "tsk"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single"
+      ],
+      "lastVerifiedAt": "2026-03-13T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.openbible.info/labs/cross-references/search?q={{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bolls-bible",
+      "name": "Bolls Bible",
+      "catalogType": "read",
+      "catalogSubtype": "bibles",
+      "keywords": [
+        "bolls",
+        "interlinear"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter"
+      ],
+      "lastVerifiedAt": "2026-03-06T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://bolls.life/{{bollsTranslation}}/{{bookNumber}}/{{chapter}}{{versePath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "blue-letter-bible",
+      "name": "Blue Letter Bible",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "blb",
+        "blueletterbible"
+      ],
+      "featuredRank": 6,
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.blueletterbible.org/{{translationLower}}/{{bookCode}}/{{chapter}}/{{verse}}/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "biblia",
+      "name": "Biblia",
+      "subtitle": "Faithlife reader",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "biblia",
+        "faithlife",
+        "logos"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-13T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://biblia.com/bible/{{bibliaTranslation}}/{{logosRefLyReference}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "logos",
+      "name": "Logos",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "faithlife",
+        "logos bible"
+      ],
+      "featuredRank": 4,
+      "status": "active",
+      "confidence": "community",
+      "webFallbackKind": "webapp",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "https://ref.ly/{{logosRefLyReference}};{{translationLower}}?t=biblia",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://app.logos.com/books/LLS%3A1.0.710/references/{{logosDataReference}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "obsidian",
+      "name": "Obsidian",
+      "catalogType": "route",
+      "catalogSubtype": "note",
+      "keywords": [
+        "obsidian",
+        "connected notes",
+        "markdown",
+        "notes",
+        "second brain"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "obsidian://new?name={{obsidianNoteName}}&content={{obsidianNoteContent}}",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://obsidian.md/download",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "obsidian-reading-log",
+      "name": "Obsidian Reading Log",
+      "subtitle": "One-time setup",
+      "catalogType": "route",
+      "catalogSubtype": "note",
+      "keywords": [
+        "obsidian",
+        "reading log",
+        "base",
+        "bases",
+        "setup"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-12T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "obsidian://new?file=Reading%20Log.base&content={{obsidianReadingLogBaseContent}}",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://obsidian.md/download",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bear",
+      "name": "Bear",
+      "catalogType": "route",
+      "catalogSubtype": "note",
+      "keywords": [
+        "bear",
+        "notes",
+        "markdown",
+        "capture"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-11T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "bear://x-callback-url/create?title={{displayPassage}}&text=[{{actionTitle}}]({{routeUrl}})&tags=route-bible,scripture",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://bear.app/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "day-one",
+      "name": "Day One",
+      "catalogType": "route",
+      "catalogSubtype": "note",
+      "keywords": [
+        "journal",
+        "journaling",
+        "diary",
+        "reflection"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "dayone://post?entry={{actionBody}}&tags=bible,route-bible",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://dayoneapp.com/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drafts",
+      "name": "Drafts",
+      "catalogType": "route",
+      "catalogSubtype": "note",
+      "keywords": [
+        "notes",
+        "capture",
+        "inbox",
+        "writing"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "webapp",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "drafts://x-callback-url/capture?text={{actionBody}}&tag=bible",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://capture.getdrafts.com/?text={{actionBody}}&tag=bible",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shortcuts",
+      "name": "Shortcuts",
+      "subtitle": "Run your own workflow",
+      "catalogType": "route",
+      "catalogSubtype": "note",
+      "keywords": [
+        "shortcuts",
+        "apple shortcuts",
+        "ios",
+        "automation",
+        "siri"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "internal",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "shortcuts://run-shortcut?name=Route%20Bible&input=text&text={{routeUrl}}",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "/shortcuts",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mailto",
+      "name": "Email",
+      "catalogType": "route",
+      "catalogSubtype": "share",
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "mailto:?subject={{actionTitle}}&body={{actionBody}}"
+        }
+      ]
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "catalogType": "route",
+      "catalogSubtype": "share",
+      "keywords": [
+        "message",
+        "chat",
+        "group share",
+        "channel"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://t.me/share/url?url={{routeUrl}}&text={{shareText}}",
+          "platforms": [
+            "ios",
+            "android",
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp",
+      "catalogType": "route",
+      "catalogSubtype": "share",
+      "keywords": [
+        "message",
+        "chat",
+        "group share"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "webapp",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "whatsapp://send?text={{shareText}}",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://api.whatsapp.com/send?text={{shareText}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x",
+      "name": "X",
+      "catalogType": "route",
+      "catalogSubtype": "share",
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://twitter.com/intent/tweet?text={{displayPassage}}&url={{routeUrl}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "ai",
+        "chat",
+        "openai",
+        "questions",
+        "assistant"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://chatgpt.com/g/g-DcL3nGFWk-bible-bot-christian-companion?prompt={{aiPromptBody}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "claude",
+      "name": "Claude",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "ai",
+        "chat",
+        "anthropic",
+        "questions",
+        "assistant"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://claude.ai/new?q={{aiPromptBody}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "grok",
+      "name": "Grok",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "ai",
+        "chat",
+        "xai",
+        "questions",
+        "assistant"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://grok.com/?q={{actionBody}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t3-chat",
+      "name": "T3 Chat",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "ai",
+        "chat",
+        "t3",
+        "questions",
+        "assistant"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://t3.chat/new?q={{aiPromptBody}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "ai",
+        "chat",
+        "search",
+        "questions",
+        "assistant"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.perplexity.ai/search/new?q={{aiPromptBody}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kagi-translate",
+      "name": "Kagi Translate",
+      "catalogType": "route",
+      "catalogSubtype": "translate",
+      "keywords": [
+        "kagi",
+        "translate",
+        "translation",
+        "language"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://translate.kagi.com/?from=auto&to=en_us&text={{actionBody}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "google-translate",
+      "name": "Google Translate",
+      "catalogType": "route",
+      "catalogSubtype": "translate",
+      "keywords": [
+        "google",
+        "translate",
+        "translation",
+        "language"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://translate.google.com/?sl=auto&tl=en&text={{actionBody}}&op=translate",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "todoist",
+      "name": "Todoist",
+      "catalogType": "practice",
+      "catalogSubtype": "habits",
+      "status": "degraded",
+      "confidence": "official",
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "todoist://addtask?content={{todoistTaskTitle}}&description={{actionBody}}"
+        },
+        {
+          "kind": "web",
+          "template": "https://apps.apple.com/us/app/todoist-to-do-list-calendar/id572688855",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "calendar",
+      "name": "Calendar",
+      "subtitle": "Reading-plan subscription",
+      "catalogType": "practice",
+      "catalogSubtype": "habits",
+      "status": "active",
+      "confidence": "official",
+      "firstParty": true,
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "/{{passageLower}}?calendar=1&v={{translation}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "things-3",
+      "name": "Things 3",
+      "catalogType": "practice",
+      "catalogSubtype": "habits",
+      "keywords": [
+        "tasks",
+        "gtd",
+        "inbox",
+        "reminder"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-10T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "things:///add?title=Study%20{{displayPassage}}&notes={{routeUrl}}&show-quick-entry=true",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://culturedcode.com/things/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "omnifocus",
+      "name": "OmniFocus",
+      "catalogType": "practice",
+      "catalogSubtype": "habits",
+      "keywords": [
+        "omnifocus",
+        "task",
+        "gtd",
+        "reminder"
+      ],
+      "status": "degraded",
+      "confidence": "official",
+      "webFallbackKind": "install",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-11T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "omnifocus:///add?name=Study%20{{displayPassage}}&note={{actionBody}}&autosave=true",
+          "platforms": [
+            "ios"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://www.omnigroup.com/omnifocus",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "step-bible",
+      "name": "STEP Bible",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "step",
+        "tyndale",
+        "interlinear"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.stepbible.org/?q={{stepBibleQuery}}&options=HNVUG",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wedevote",
+      "name": "WeDevote",
+      "catalogType": "read",
+      "catalogSubtype": "bibles",
+      "keywords": [
+        "we devote",
+        "wd bible"
+      ],
+      "status": "degraded",
+      "confidence": "community",
+      "webFallbackKind": "webapp",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-02-27T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "deep",
+          "template": "wdbible://bible/{{passageLower}}",
+          "platforms": [
+            "ios",
+            "android"
+          ]
+        },
+        {
+          "kind": "web",
+          "template": "https://wd.bible/en/bible/{{bookCode}}.{{chapter}}.{{translationLower}}{{verseRange}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "enduring-word",
+      "name": "Enduring Word",
+      "catalogType": "explore",
+      "catalogSubtype": "commentary",
+      "keywords": [
+        "commentary",
+        "pastor david guzik"
+      ],
+      "featuredRank": 5,
+      "status": "active",
+      "confidence": "community",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://enduringword.com/bible-commentary/{{chapterPath}}/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "precept-austin",
+      "name": "Precept Austin",
+      "catalogType": "explore",
+      "catalogSubtype": "commentary",
+      "keywords": [
+        "precept",
+        "precept austin",
+        "commentary"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.preceptaustin.org/bybook/{{bookNumber}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "got-questions",
+      "name": "Got Questions",
+      "subtitle": "Topical answers",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "got questions",
+        "gotquestions",
+        "questions",
+        "answers"
+      ],
+      "featuredRank": 3,
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.gotquestions.org/search-results.html?q={{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bibleref",
+      "name": "BibleRef",
+      "catalogType": "explore",
+      "catalogSubtype": "commentary",
+      "keywords": [
+        "bibleref",
+        "what does this mean",
+        "commentary",
+        "got questions"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-11T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.bibleref.com/{{bibleRefPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "desiring-god",
+      "name": "Desiring God",
+      "subtitle": "Sermons and articles",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "desiring god",
+        "john piper",
+        "sermons",
+        "articles"
+      ],
+      "status": "degraded",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.desiringgod.org/search/results?q={{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bible-project",
+      "name": "BibleProject",
+      "subtitle": "Book guides and search",
+      "catalogType": "explore",
+      "catalogSubtype": "guides",
+      "keywords": [
+        "bible project",
+        "bibleproject",
+        "guides",
+        "overview"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://bibleproject.com/{{bibleProjectPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tgc-commentary",
+      "name": "The Gospel Coalition",
+      "catalogType": "explore",
+      "catalogSubtype": "commentary",
+      "keywords": [
+        "the gospel coalition",
+        "tgc",
+        "commentary"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.thegospelcoalition.org/commentary/{{bookSlug}}/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "catena",
+      "name": "Catena",
+      "catalogType": "explore",
+      "catalogSubtype": "commentary",
+      "keywords": [
+        "church fathers",
+        "patristic",
+        "catena bible"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://catenabible.com/{{catenaPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bible-thinker",
+      "name": "BibleThinker",
+      "catalogType": "explore",
+      "catalogSubtype": "commentary",
+      "keywords": [
+        "bible thinker",
+        "mike winger",
+        "articles",
+        "search"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://biblethinker.org/?s={{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ligonier",
+      "name": "Ligonier",
+      "catalogType": "explore",
+      "catalogSubtype": "commentary",
+      "keywords": [
+        "ligonier",
+        "r.c. sproul",
+        "articles",
+        "search"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://search.ligonier.org/?q={{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "9marks",
+      "name": "9Marks",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "9marks",
+        "nine marks",
+        "church",
+        "articles"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.9marks.org/?s={{displayPassage}}&post-type=all",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "faith-alone",
+      "name": "Grace Evangelical Society",
+      "catalogType": "explore",
+      "catalogSubtype": "commentary",
+      "keywords": [
+        "grace evangelical society",
+        "ges",
+        "faith alone",
+        "articles",
+        "search"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://faithalone.org/?s={{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sermon-audio",
+      "name": "SermonAudio",
+      "catalogType": "explore",
+      "catalogSubtype": "media",
+      "keywords": [
+        "sermonaudio",
+        "sermons",
+        "audio",
+        "scripture"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.sermonaudio.com/sermons/scripture/{{sermonAudioPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "seekfind",
+      "name": "SeekFind",
+      "catalogType": "explore",
+      "catalogSubtype": "ask",
+      "keywords": [
+        "seekfind",
+        "christian search",
+        "gqm",
+        "search"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.seekfind.org/search-results.html?q={{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bible-is",
+      "name": "Bible.is",
+      "catalogType": "read",
+      "catalogSubtype": "audio",
+      "keywords": [
+        "bible.is",
+        "faith comes by hearing",
+        "audio bible",
+        "reading"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter"
+      ],
+      "lastVerifiedAt": "2026-03-09T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://live.bible.is/bible/{{bibleIsTranslation}}/{{bibleIsPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "niv-audio-bible",
+      "name": "NIV Audio Bible",
+      "subtitle": "Biblica",
+      "catalogType": "read",
+      "catalogSubtype": "audio",
+      "keywords": [
+        "biblica",
+        "niv",
+        "new international version",
+        "audio bible"
+      ],
+      "status": "active",
+      "confidence": "official",
+      "supportedRangeTypes": [
+        "single",
+        "chapter"
+      ],
+      "lastVerifiedAt": "2026-03-12T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.biblica.com/bible/niv/{{biblicaPath}}/",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "literal-word",
+      "name": "Literal Word",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "nasb",
+        "literal word"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-02T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://nasb.literalword.com/?q={{literalWordQuery}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bible-study-tools",
+      "name": "Bible Study Tools",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "bst",
+        "study tools"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "agentRetrieval": "defuddle",
+      "supportedRangeTypes": [
+        "single",
+        "chapter"
+      ],
+      "lastVerifiedAt": "2026-03-08T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://www.biblestudytools.com/{{bibleStudyToolsPath}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "studybible-info",
+      "name": "StudyBible.info",
+      "subtitle": "Interlinear study",
+      "catalogType": "explore",
+      "catalogSubtype": "lexicon",
+      "keywords": [
+        "studybible",
+        "interlinear",
+        "parallel",
+        "strongs"
+      ],
+      "status": "active",
+      "confidence": "community",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ],
+      "lastVerifiedAt": "2026-03-13T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "template": "https://studybible.info/{{studyBibleTranslation}}/{{displayPassage}}",
+          "platforms": [
+            "web"
+          ]
+        }
+      ]
+    }
+  ]
+}

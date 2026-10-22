@@ -1,13 +1,15 @@
 //! The verse menu (frame 08a): right-click a verse for the highlight swatches (1–6, 0 clears),
-//! note, bookmark, copy, share, compare and parallel.
+//! note, bookmark, copy, share, compare, parallel, and Open in ›.
 
 use bible_core::VerseRef;
+use bible_core::open_in::Catalog;
 use bible_core::study::{HighlightColor, StudyStore};
 use eframe::egui::{self, Color32, Key, Modifiers, Order, Painter, Pos2, Rect, Sense, Stroke, pos2, vec2};
 
 use crate::actions::Action;
 use crate::icons;
 use crate::menu::{self, ITEM_HEIGHT, PADDING_X, PADDING_Y, SEPARATOR_HEIGHT};
+use crate::open_in_menu::OpenInMenu;
 use crate::theme::{Palette, menu as tokens};
 use crate::widgets::IconFn;
 
@@ -16,7 +18,14 @@ const WIDTH: f32 = 264.0;
 const SWATCHES_HEIGHT: f32 = 34.0;
 
 enum Line {
-    Item { icon: IconFn, label: String, shortcut: &'static str, action: Option<Action> },
+    Item {
+        icon: IconFn,
+        label: String,
+        shortcut: &'static str,
+        action: Option<Action>,
+    },
+    /// Opens the Open in › flyout; not a closing action by itself.
+    OpenIn,
     Separator,
 }
 
@@ -25,11 +34,12 @@ pub struct VerseMenu {
     /// The item under the keyboard (and the pointer).
     highlighted: Option<usize>,
     opened: bool,
+    open_in: Option<OpenInMenu>,
 }
 
 impl VerseMenu {
     pub fn new(pos: Pos2) -> Self {
-        Self { pos, highlighted: None, opened: false }
+        Self { pos, highlighted: None, opened: false, open_in: None }
     }
 
     /// Starts with the first item highlighted, as when opened from the keyboard.
@@ -66,6 +76,7 @@ impl VerseMenu {
             Line::Separator,
             item(icons::compare, "Compare Translations", "C", Some(Action::Compare)),
             item(icons::columns, "Open in Parallel", "⇧⌘P", Some(Action::ToggleParallel)),
+            Line::OpenIn,
             Line::Separator,
             item(icons::text_cursor, "Select Verse Range", "⇧-click", None),
         ]
@@ -82,38 +93,59 @@ impl VerseMenu {
         // The colour all of the selection has, if one: its swatch is checked, and clears.
         current: Option<HighlightColor>,
         settings: &crate::app::Settings,
+        catalog: &Catalog,
         actions: &mut Vec<Action>,
     ) -> bool {
         if refs.is_empty() {
             return true;
         }
         let lines = Self::lines(study, refs);
+        let open_in_idx = lines.iter().position(|l| matches!(l, Line::OpenIn));
         let enabled: Vec<usize> = lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| matches!(l, Line::Item { action: Some(_), .. }))
+            .filter(|(_, l)| matches!(l, Line::Item { action: Some(_), .. } | Line::OpenIn))
             .map(|(i, _)| i)
             .collect();
-        let (down, up, enter, esc) = ctx.input_mut(|i| {
-            (
-                i.consume_key(Modifiers::NONE, Key::ArrowDown),
-                i.consume_key(Modifiers::NONE, Key::ArrowUp),
-                i.consume_key(Modifiers::NONE, Key::Enter),
-                i.consume_key(Modifiers::NONE, Key::Escape),
-            )
-        });
-        if esc {
+        // When the Open in flyout is open it owns arrow keys / enter / typing.
+        let flyout_open = self.open_in.is_some();
+        let (down, up, enter, esc, right) = if flyout_open {
+            (false, false, false, false, false)
+        } else {
+            ctx.input_mut(|i| {
+                (
+                    i.consume_key(Modifiers::NONE, Key::ArrowDown),
+                    i.consume_key(Modifiers::NONE, Key::ArrowUp),
+                    i.consume_key(Modifiers::NONE, Key::Enter),
+                    i.consume_key(Modifiers::NONE, Key::Escape),
+                    i.consume_key(Modifiers::NONE, Key::ArrowRight),
+                )
+            })
+        };
+        if esc && !flyout_open {
             return true;
         }
         let at = self.highlighted.and_then(|h| enabled.iter().position(|i| *i == h));
         if down {
             self.highlighted = Some(enabled[at.map_or(0, |a| (a + 1) % enabled.len())]);
+            if self.highlighted != open_in_idx {
+                self.open_in = None;
+            }
         }
         if up {
             self.highlighted =
                 Some(enabled[at.map_or(enabled.len() - 1, |a| (a + enabled.len() - 1) % enabled.len())]);
+            if self.highlighted != open_in_idx {
+                self.open_in = None;
+            }
         }
-        if enter && let Some(Line::Item { action: Some(a), .. }) = self.highlighted.and_then(|h| lines.get(h))
+        if (enter || right) && self.highlighted == open_in_idx {
+            // Open the flyout beside the row; position filled in while painting.
+            if self.open_in.is_none() {
+                self.open_in = Some(OpenInMenu::new(self.pos));
+            }
+        } else if enter
+            && let Some(Line::Item { action: Some(a), .. }) = self.highlighted.and_then(|h| lines.get(h))
         {
             actions.push(a.clone());
             return true;
@@ -134,6 +166,7 @@ impl VerseMenu {
             self.pos.y.min(screen.bottom() - height - 8.0).max(screen.top() + 8.0),
         );
         let mut close = false;
+        let mut open_in_row: Option<Rect> = None;
         let area = egui::Area::new(egui::Id::new("verse-menu")).order(Order::Foreground).fixed_pos(pos).show(
             ctx,
             |ui| {
@@ -194,6 +227,31 @@ impl VerseMenu {
                             menu::paint_separator(ui.painter(), p, left, right, y);
                             y += SEPARATOR_HEIGHT;
                         }
+                        Line::OpenIn => {
+                            let r = Rect::from_x_y_ranges(left..=right, y..=y + ITEM_HEIGHT);
+                            let resp = ui.interact(r, ui.id().with(("menu-item", i)), Sense::click());
+                            if resp.hovered() && ui.input(|inp| inp.pointer.delta() != egui::Vec2::ZERO) {
+                                self.highlighted = Some(i);
+                                if self.open_in.is_none() {
+                                    self.open_in = Some(OpenInMenu::new(pos2(r.right() + 4.0, r.top())));
+                                }
+                            }
+                            let row = menu::Row {
+                                icon: icons::external,
+                                label: "Open in",
+                                shortcut: "›",
+                                enabled: true,
+                                lit: self.highlighted == Some(i) || self.open_in.is_some(),
+                                pressed: resp.is_pointer_button_down_on(),
+                            };
+                            menu::paint_row(ui.painter(), p, r, row);
+                            if resp.clicked() {
+                                self.highlighted = Some(i);
+                                self.open_in = Some(OpenInMenu::new(pos2(r.right() + 4.0, r.top())));
+                            }
+                            open_in_row = Some(r);
+                            y += ITEM_HEIGHT;
+                        }
                         Line::Item { icon, label, shortcut, action } => {
                             let r = Rect::from_x_y_ranges(left..=right, y..=y + ITEM_HEIGHT);
                             let resp = ui.interact(r, ui.id().with(("menu-item", i)), Sense::click());
@@ -202,6 +260,7 @@ impl VerseMenu {
                                 && ui.input(|inp| inp.pointer.delta() != egui::Vec2::ZERO)
                             {
                                 self.highlighted = Some(i);
+                                self.open_in = None;
                             }
                             let row = menu::Row {
                                 icon: *icon,
@@ -224,9 +283,20 @@ impl VerseMenu {
                 }
             },
         );
+        if let (Some(menu), Some(row)) = (self.open_in.as_mut(), open_in_row) {
+            menu.pos = pos2(row.right() + 4.0, row.top());
+            if menu.show(ctx, p, catalog, actions) {
+                // Esc / click-elsewhere on the flyout: close only the flyout unless an OpenIn fired.
+                let opened = actions.iter().any(|a| matches!(a, Action::OpenIn(_)));
+                self.open_in = None;
+                if opened {
+                    close = true;
+                }
+            }
+        }
         if !self.opened {
             self.opened = true;
-        } else if area.response.clicked_elsewhere() {
+        } else if area.response.clicked_elsewhere() && self.open_in.is_none() {
             close = true;
         }
         close

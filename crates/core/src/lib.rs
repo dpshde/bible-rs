@@ -14,6 +14,7 @@ pub mod library;
 pub mod model;
 #[cfg(feature = "native")]
 pub mod online;
+pub mod open_in;
 pub mod plans;
 pub mod reference;
 pub mod search;

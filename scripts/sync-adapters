@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Refresh the vendored route.bible adapter link templates embedded by bible-core.
+#
+# Usage:
+#   scripts/sync-adapters
+#   scripts/sync-adapters /path/to/adapters.links.json   # copy a local checkout instead
+#
+# Prefer a local clone of dpshde/route-bible (or dpshade/selah-tools) when you have one:
+#   packages/route-bible-adapters/config/adapters.links.json
+# Otherwise downloads the published npm package snapshot from jsDelivr.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+OUT="$ROOT/crates/core/data/adapters.links.json"
+TMP="$(mktemp)"
+trap 'rm -f "$TMP"' EXIT
+
+if [[ $# -ge 1 ]]; then
+  SRC="$1"
+  [[ -f "$SRC" ]] || { echo "sync-adapters: not a file: $SRC" >&2; exit 1; }
+  cp "$SRC" "$TMP"
+else
+  # Try the monorepo path Dylan named first; fall back to the published npm package.
+  URLS=(
+    "https://raw.githubusercontent.com/dpshde/route-bible/master/packages/route-bible-adapters/config/adapters.links.json"
+    "https://raw.githubusercontent.com/dpshade/selah-tools/main/packages/route-bible-adapters/config/adapters.links.json"
+    "https://cdn.jsdelivr.net/npm/@route-bible/adapters/config/adapters.links.json"
+  )
+  fetched=
+  for url in "${URLS[@]}"; do
+    if curl -fsSL --retry 2 --retry-delay 1 -o "$TMP" "$url"; then
+      echo "sync-adapters: fetched $url"
+      fetched=1
+      break
+    fi
+  done
+  [[ -n "$fetched" ]] || { echo "sync-adapters: could not download adapters.links.json" >&2; exit 1; }
+fi
+
+python3 - "$TMP" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    data = json.load(f)
+adapters = data.get("adapters")
+if not isinstance(adapters, list) or not adapters:
+    sys.exit("sync-adapters: expected a non-empty 'adapters' array")
+for a in adapters:
+    if not isinstance(a, dict) or "id" not in a or "name" not in a:
+        sys.exit("sync-adapters: each adapter needs id and name")
+print(f"sync-adapters: {len(adapters)} adapters (version {data.get('version', '?')})")
+PY
+
+mkdir -p "$(dirname "$OUT")"
+# Stable pretty JSON so the diff stays readable.
+python3 -c 'import json,sys; json.dump(json.load(open(sys.argv[1],encoding="utf-8")), open(sys.argv[2],"w",encoding="utf-8"), indent=2, ensure_ascii=False); open(sys.argv[2],"a",encoding="utf-8").write("\n")' "$TMP" "$OUT"
+echo "sync-adapters: wrote $OUT"

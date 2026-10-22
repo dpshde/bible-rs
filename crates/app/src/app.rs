@@ -254,6 +254,8 @@ pub struct BibleApp {
     sidebar_probe: Option<crate::probe::SidebarProbe>,
     reading: crate::reading::Tracker,
     verse_menu: Option<crate::verse_menu::VerseMenu>,
+    /// Destinations for the verse menu's Open in › flyout (compile-time vendored snapshot).
+    open_in_catalog: bible_core::open_in::Catalog,
     note_popover: Option<NotePopover>,
     /// The first-launch screens, until they are done.
     onboarding: Option<crate::onboarding::Onboarding>,
@@ -349,6 +351,7 @@ impl BibleApp {
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(crate::onboarding::SIZE));
             crate::onboarding::Onboarding::new(&cc.egui_ctx)
         });
+        let open_in_catalog = bible_core::open_in::Catalog::bundled();
         Self {
             data_dir,
             library,
@@ -389,6 +392,7 @@ impl BibleApp {
             sidebar_probe: crate::probe::SidebarProbe::from_env(),
             reading: Default::default(),
             verse_menu: None,
+            open_in_catalog,
             note_popover: None,
             onboarding,
             import_sheet: None,
@@ -771,6 +775,22 @@ impl BibleApp {
             Action::OpenVerseMenu(pos) => {
                 if !self.reader.selected_refs().is_empty() {
                     self.verse_menu = Some(crate::verse_menu::VerseMenu::new(pos));
+                }
+            }
+            Action::OpenIn(adapter_id) => {
+                let refs = self.reader.selected_refs();
+                if let Some(passage) = bible_core::open_in::Passage::from_refs(&refs) {
+                    let url =
+                        bible_core::open_in::open_url_for(passage, &adapter_id, &self.settings.translation);
+                    open_url(&url);
+                    let name = self
+                        .open_in_catalog
+                        .items
+                        .iter()
+                        .find(|a| a.id == adapter_id)
+                        .map(|a| a.name.as_str())
+                        .unwrap_or(adapter_id.as_str());
+                    self.toast(ctx, format!("Opening in {name}"));
                 }
             }
             Action::ShareImage => {
@@ -2528,7 +2548,16 @@ impl eframe::App for BibleApp {
         let current = self.verse_menu.as_ref().and_then(|_| self.selection_color());
         if let Some(menu) = &mut self.verse_menu {
             let refs = self.reader.selected_refs();
-            if menu.show(&ctx, p, &self.study, &refs, current, &self.settings, &mut actions) {
+            if menu.show(
+                &ctx,
+                p,
+                &self.study,
+                &refs,
+                current,
+                &self.settings,
+                &self.open_in_catalog,
+                &mut actions,
+            ) {
                 self.verse_menu = None;
             }
         }
