@@ -304,4 +304,32 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Dylan's case: one word highlight mid Romans 5:3 through the end of 5:5 — right-click
+    /// (or B) on any of those verses bookmarks the outer range 5:3–5.
+    #[test]
+    fn bookmark_menu_cross_verse_word_highlight_romans_5() {
+        let t = bible_core::bundled::load("bsb").unwrap();
+        let r = |n: u8| VerseRef::new(BookId(44), 5, n);
+        let v3 = t.find(r(3)).unwrap();
+        let start_byte = v3.text.find("but we also rejoice").expect("phrase in BSB Rom 5:3");
+        let start = v3.text[..start_byte].chars().count();
+        let span = TextSpan { first: r(3), start, last: r(5), end: usize::MAX };
+
+        let dir = std::env::temp_dir().join(format!("bible-rs-verse-menu-rom5-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut study = StudyStore::open(&path).unwrap();
+        let text = |v: VerseRef| t.find(v).map(|vv| vv.text.to_string());
+        study.highlight_span(&span, Some(HighlightColor::Blue), text).unwrap();
+
+        let want = Action::BookmarkVerses(vec![r(3), r(4), r(5)]);
+        for n in [3u8, 4, 5] {
+            let (label, action) = bookmark_menu(&study, r(n));
+            assert_eq!(label, "Bookmark Romans 5:3–5", "from verse {n}");
+            assert_eq!(action, want, "from verse {n}");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
