@@ -2,50 +2,11 @@
   "schemaVersion": 1,
   "version": "fixture-2026-03-10",
   "generatedAt": "2026-03-10T00:00:00.000Z",
-  "adapterCount": 58,
+  "adapterCount": 57,
   "adapters": {
     "version": "1",
     "generatedAt": "2026-03-10T00:00:00.000Z",
     "adapters": [
-      {
-        "id": "exedra",
-        "name": "Exedra",
-        "catalogType": "read",
-        "catalogSubtype": "bibles",
-        "keywords": [
-          "selah",
-          "route bible"
-        ],
-        "status": "degraded",
-        "confidence": "official",
-        "firstParty": true,
-        "webFallbackKind": "install",
-        "supportedRangeTypes": [
-          "single",
-          "chapter",
-          "same_chapter",
-          "chapter_range",
-          "cross_reference"
-        ],
-        "lastVerifiedAt": "2026-02-26T00:00:00.000Z",
-        "links": [
-          {
-            "kind": "deep",
-            "template": "exedra://bible?reference={{passage}}",
-            "platforms": [
-              "ios",
-              "android"
-            ]
-          },
-          {
-            "kind": "web",
-            "template": "/{{passage}}?mode=launcher",
-            "platforms": [
-              "web"
-            ]
-          }
-        ]
-      },
       {
         "id": "bible-app",
         "name": "YouVersion",
@@ -2023,12 +1984,6 @@
     },
     "everyones-bible": {
       "path": "icons/everyones-bible.png",
-      "sha256": "fe1717e23d000442e605b34798cb852df8d178f573d486eae9be1ba30fa072e3",
-      "width": 64,
-      "height": 64
-    },
-    "exedra": {
-      "path": "icons/exedra.png",
       "sha256": "fe1717e23d000442e605b34798cb852df8d178f573d486eae9be1ba30fa072e3",
       "width": 64,
       "height": 64

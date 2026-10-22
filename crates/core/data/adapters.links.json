@@ -3,45 +3,6 @@
   "generatedAt": "2026-03-10T00:00:00.000Z",
   "adapters": [
     {
-      "id": "exedra",
-      "name": "Exedra",
-      "catalogType": "read",
-      "catalogSubtype": "bibles",
-      "keywords": [
-        "selah",
-        "route bible"
-      ],
-      "status": "degraded",
-      "confidence": "official",
-      "firstParty": true,
-      "webFallbackKind": "install",
-      "supportedRangeTypes": [
-        "single",
-        "chapter",
-        "same_chapter",
-        "chapter_range",
-        "cross_reference"
-      ],
-      "lastVerifiedAt": "2026-02-26T00:00:00.000Z",
-      "links": [
-        {
-          "kind": "deep",
-          "template": "exedra://bible?reference={{passage}}",
-          "platforms": [
-            "ios",
-            "android"
-          ]
-        },
-        {
-          "kind": "web",
-          "template": "/{{passage}}?mode=launcher",
-          "platforms": [
-            "web"
-          ]
-        }
-      ]
-    },
-    {
       "id": "bible-app",
       "name": "YouVersion",
       "catalogType": "read",

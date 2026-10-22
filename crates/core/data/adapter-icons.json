@@ -220,15 +220,6 @@
       "height": 64
     },
     {
-      "id": "exedra",
-      "file": "exedra.png",
-      "type": "png",
-      "bytes": 793,
-      "sha256": "fe1717e23d000442e605b34798cb852df8d178f573d486eae9be1ba30fa072e3",
-      "width": 64,
-      "height": 64
-    },
-    {
       "id": "faith-alone",
       "file": "faith-alone.png",
       "type": "png",
