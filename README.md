@@ -328,16 +328,16 @@ Other tasks:
 |---|---|
 | `cargo test --workspace` | core (model, format, importers, search, references, study, online with a mock server), typesetting and FFI tests |
 | `cargo run -p xtask -- build-data` | re-download the pinned public-domain sources and regenerate `data/translations/*.bbl` |
-| `scripts/sync-adapters` | pull route.bible’s adapters feed into `crates/core/data/` (override with `ROUTE_BIBLE_FEED=…`) |
+| `ROUTE_BIBLE_ADAPTERS=refresh cargo build -p bible-core` | opt-in: pull route.bible’s adapters feed into `OUT_DIR` (offline builds keep `crates/core/data/`) |
+| `scripts/sync-adapters` | same refresh, then copy into `crates/core/data/` for committing (`ROUTE_BIBLE_FEED` overrides the base URL) |
 | `scripts/screenshots.sh` | regenerate `docs/screenshots/` under Xvfb |
 | `BIBLE_RS_HOME=/some/dir bible-rs` | use another data folder |
 
-**route.bible adapters.** Open in › uses a vendored snapshot of route.bible’s adapter catalog
-(`crates/core/data/`). `scripts/sync-adapters` is the only ingest path: it reads
-`ROUTE_BIBLE_FEED` (default `https://route.bible/adapters/v1`), verifies icon sha256s, and writes
-`adapters.links.json`, icons, and `adapters.version`. CI runs it daily (and on
-`repository_dispatch` type `route-bible-adapters`) and opens a single sync PR when the version
-changes. Local fixture: `ROUTE_BIBLE_FEED=crates/core/tests/fixtures/route-bible-adapters-feed`.
+**route.bible adapters.** Open in › embeds a vendored feed snapshot in `crates/core/data/`. Default
+builds stay offline; `ROUTE_BIBLE_ADAPTERS=refresh` pulls `latest.txt` / `manifest.json` /
+sha256-verified icons (cached by version in `OUT_DIR`), falling back to the vendored copy with a
+cargo warning if the feed is unreachable. Use `scripts/sync-adapters` to vendor a new snapshot.
+Local fixture: `ROUTE_BIBLE_FEED=crates/core/tests/fixtures/route-bible-adapters-feed`.
 
 The binary doubles as a small CLI:
 

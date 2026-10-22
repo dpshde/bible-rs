@@ -2,6 +2,7 @@
 
 ## route.bible adapters
 
-Do not clone route.bible or run npm to refresh Open in › adapters. Use `scripts/sync-adapters`
-only (`ROUTE_BIBLE_FEED` overrides the base URL). The daily GitHub Action
-`.github/workflows/sync-route-bible-adapters.yml` opens one PR per new feed version.
+Open in › adapters are vendored under `crates/core/data/`. Default builds stay offline. To
+refresh from the route.bible feed, run `scripts/sync-adapters` (or
+`ROUTE_BIBLE_ADAPTERS=refresh cargo build -p bible-core`); override the base URL with
+`ROUTE_BIBLE_FEED`. Do not clone route.bible or use npm for this.

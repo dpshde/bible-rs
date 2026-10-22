@@ -1,39 +1,30 @@
 #!/usr/bin/env python3
-"""Pull route.bible's adapters feed into crates/core/data/.
+"""Vendor route.bible adapters into crates/core/data/ via build.rs refresh.
 
-Feed contract (ROUTE_BIBLE_FEED, default https://route.bible/adapters/v1):
-  <feed>/latest.txt              version string
-  <feed>/manifest.json           schemaVersion:1, version, generatedAt, adapterCount,
-                                 adapters:<adapters.links.json object>,
-                                 icons:{ id: { path, sha256, width, height } }
-  <feed>/icons/<file>.png        64×64 PNGs (paths from manifest)
+Thin wrapper: runs `ROUTE_BIBLE_ADAPTERS=refresh cargo build -p bible-core` (feed logic and
+sha256 checks live in crates/core/build.rs), then copies the staged result into
+crates/core/data/ for committing.
 
-Usage:
   scripts/sync-adapters
   ROUTE_BIBLE_FEED=https://feed-route-bible-preview.dpshade.workers.dev/adapters/v1 scripts/sync-adapters
   ROUTE_BIBLE_FEED=crates/core/tests/fixtures/route-bible-adapters-feed scripts/sync-adapters
-  scripts/sync-adapters --dry-run
-
-Idempotent: exits 0 with no writes when data/adapters.version already matches latest.
-Fails loudly on schema mismatch or sha256 failure.
 """
 
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-SCHEMA_VERSION = 1
-DEFAULT_FEED = "https://route.bible/adapters/v1"
-UA = "bible-rs-sync-adapters/0.2 (+https://github.com/simplymybible/bible-rs)"
+REQUIRED = (
+    "adapters.links.json",
+    "adapters.version",
+    "adapter-icons.json",
+    "adapter-icons",
+)
 
 
 def die(msg: str, code: int = 1) -> None:
@@ -45,173 +36,54 @@ def root_dir() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def feed_base() -> str:
-    return os.environ.get("ROUTE_BIBLE_FEED", DEFAULT_FEED).rstrip("/")
-
-
-def is_local_feed(base: str) -> bool:
-    p = Path(base)
-    return p.is_dir() or base.startswith("file:")
-
-
-def fetch_bytes(base: str, rel: str) -> bytes:
-    """Fetch `<base>/<rel>` from HTTP(S) or a local feed directory."""
-    rel = rel.lstrip("/")
-    if is_local_feed(base):
-        local = Path(base.removeprefix("file://"))
-        path = local / rel
-        if not path.is_file():
-            die(f"missing local feed file: {path}")
-        return path.read_bytes()
-    url = f"{base}/{rel}"
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            body = resp.read()
-    except urllib.error.HTTPError as e:
-        die(f"GET {url} → HTTP {e.code}")
-    except urllib.error.URLError as e:
-        die(f"GET {url} → {e.reason}")
-    if body.lstrip().startswith((b"<!DOCTYPE", b"<!doctype", b"<html")):
-        die(f"GET {url} returned HTML, not feed data (is the feed live?)")
-    return body
-
-
-def sha256_hex(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def validate_manifest(manifest: dict) -> None:
-    if not isinstance(manifest, dict):
-        die("manifest.json: expected object")
-    schema = manifest.get("schemaVersion")
-    if schema != SCHEMA_VERSION:
-        die(f"manifest schemaVersion={schema!r}, expected {SCHEMA_VERSION}")
-    for key in ("version", "generatedAt", "adapterCount", "adapters", "icons"):
-        if key not in manifest:
-            die(f"manifest.json missing required field {key!r}")
-    version = manifest["version"]
-    if not isinstance(version, str) or not version.strip():
-        die("manifest.version must be a non-empty string")
-    adapters = manifest["adapters"]
-    if not isinstance(adapters, dict) or not isinstance(adapters.get("adapters"), list):
-        die("manifest.adapters must be an adapters.links.json object with an 'adapters' array")
-    count = manifest["adapterCount"]
-    if not isinstance(count, int) or count != len(adapters["adapters"]):
-        die(
-            f"manifest.adapterCount={count!r} does not match len(adapters.adapters)="
-            f"{len(adapters.get('adapters', []))}"
-        )
-    icons = manifest["icons"]
-    if not isinstance(icons, dict):
-        die("manifest.icons must be an object keyed by adapter id")
-    for id_, meta in icons.items():
-        if not isinstance(meta, dict):
-            die(f"icons[{id_!r}] must be an object")
-        for k in ("path", "sha256"):
-            if k not in meta or not isinstance(meta[k], str) or not meta[k]:
-                die(f"icons[{id_!r}] missing string field {k!r}")
-        if len(meta["sha256"]) != 64 or any(c not in "0123456789abcdef" for c in meta["sha256"].lower()):
-            die(f"icons[{id_!r}].sha256 is not a 64-char hex digest")
-
-
-def sync(dest: Path, base: str, dry_run: bool) -> int:
-    data_dir = dest / "crates" / "core" / "data"
-    version_file = data_dir / "adapters.version"
-    links_file = data_dir / "adapters.links.json"
-    icons_dir = data_dir / "adapter-icons"
-    icons_json = data_dir / "adapter-icons.json"
-
-    print(f"sync-adapters: feed={base}")
-    latest = fetch_bytes(base, "latest.txt").decode("utf-8").strip()
-    if not latest or "<" in latest:
-        die(f"bad latest.txt: {latest!r}")
-    print(f"sync-adapters: latest={latest}")
-
-    if version_file.is_file() and version_file.read_text(encoding="utf-8").strip() == latest:
-        # Still verify manifest version matches for safety when present.
-        print("sync-adapters: already at this version; nothing to do")
-        return 0
-
-    manifest = json.loads(fetch_bytes(base, "manifest.json").decode("utf-8"))
-    validate_manifest(manifest)
-    if manifest["version"].strip() != latest:
-        die(f"manifest.version={manifest['version']!r} != latest.txt={latest!r}")
-
-    adapters_obj = manifest["adapters"]
-    icons_meta: dict = manifest["icons"]
-
-    # Stage into a temp dir, then swap — keeps data/ consistent on failure.
-    with tempfile.TemporaryDirectory(prefix="sync-adapters-") as tmp:
-        tmp_path = Path(tmp)
-        staged_links = tmp_path / "adapters.links.json"
-        staged_icons = tmp_path / "adapter-icons"
-        staged_icons.mkdir()
-        staged_links.write_text(json.dumps(adapters_obj, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-        icon_records = []
-        for id_, meta in sorted(icons_meta.items()):
-            path = meta["path"]
-            expect = meta["sha256"].lower()
-            body = fetch_bytes(base, path)
-            got = sha256_hex(body)
-            if got != expect:
-                die(f"icon {id_}: sha256 mismatch (got {got}, expected {expect})")
-            # Always store as <id>.png in our tree for stable include_bytes keys.
-            out_name = f"{id_}.png"
-            (staged_icons / out_name).write_bytes(body)
-            icon_records.append(
-                {
-                    "id": id_,
-                    "file": out_name,
-                    "type": "png",
-                    "bytes": len(body),
-                    "sha256": got,
-                    "width": meta.get("width", 64),
-                    "height": meta.get("height", 64),
-                }
-            )
-            print(f"sync-adapters: icon {id_} ok ({len(body)} bytes)")
-
-        staged_icons_json = {
-            "version": 1,
-            "source": f"route.bible adapters feed ({latest})",
-            "size": 64,
-            "icons": icon_records,
-        }
-        (tmp_path / "adapter-icons.json").write_text(
-            json.dumps(staged_icons_json, indent=2) + "\n", encoding="utf-8"
-        )
-        (tmp_path / "adapters.version").write_text(latest + "\n", encoding="utf-8")
-
-        if dry_run:
-            print(f"sync-adapters: dry-run — would write {len(icon_records)} icons, version {latest}")
-            return 0
-
-        data_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(staged_links, links_file)
-        if icons_dir.exists():
-            shutil.rmtree(icons_dir)
-        shutil.copytree(staged_icons, icons_dir)
-        shutil.copy2(tmp_path / "adapter-icons.json", icons_json)
-        shutil.copy2(tmp_path / "adapters.version", version_file)
-
-    print(f"sync-adapters: wrote version {latest} ({manifest['adapterCount']} adapters, {len(icons_meta)} icons)")
-    return 0
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="validate feed without writing data/")
-    parser.add_argument(
-        "--root",
-        type=Path,
-        default=None,
-        help="repo root (default: parent of scripts/)",
-    )
-    args = parser.parse_args()
-    dest = args.root or root_dir()
-    raise SystemExit(sync(dest, feed_base(), args.dry_run))
+    root = root_dir()
+    data = root / "crates" / "core" / "data"
+    build_rs = root / "crates" / "core" / "build.rs"
+    if not build_rs.is_file():
+        die(f"missing {build_rs}")
+
+    # Force build.rs to re-run even when sources are unchanged.
+    os.utime(build_rs, None)
+
+    with tempfile.TemporaryDirectory(prefix="bible-rs-adapters-out-") as staging:
+        staging_path = Path(staging)
+        env = os.environ.copy()
+        env["ROUTE_BIBLE_ADAPTERS"] = "refresh"
+        env["ROUTE_BIBLE_ADAPTERS_OUT"] = str(staging_path)
+        # Preserve caller ROUTE_BIBLE_FEED (prod default is inside build.rs).
+        print(
+            f"sync-adapters: cargo build -p bible-core "
+            f"(ROUTE_BIBLE_ADAPTERS=refresh, feed={env.get('ROUTE_BIBLE_FEED', 'https://route.bible/adapters/v1')})"
+        )
+        result = subprocess.run(
+            ["cargo", "build", "-p", "bible-core"],
+            cwd=root,
+            env=env,
+        )
+        if result.returncode != 0:
+            die(f"cargo build failed (exit {result.returncode})", result.returncode)
+
+        for name in REQUIRED:
+            if not (staging_path / name).exists():
+                die(f"refresh did not produce {name} under {staging_path}")
+
+        version = (staging_path / "adapters.version").read_text(encoding="utf-8").strip()
+        committed = data / "adapters.version"
+        if committed.is_file() and committed.read_text(encoding="utf-8").strip() == version:
+            print(f"sync-adapters: already at version {version}; nothing to commit")
+            return
+
+        data.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(staging_path / "adapters.links.json", data / "adapters.links.json")
+        shutil.copy2(staging_path / "adapter-icons.json", data / "adapter-icons.json")
+        shutil.copy2(staging_path / "adapters.version", data / "adapters.version")
+        icons_dest = data / "adapter-icons"
+        if icons_dest.exists():
+            shutil.rmtree(icons_dest)
+        shutil.copytree(staging_path / "adapter-icons", icons_dest)
+        n_icons = len(list(icons_dest.glob("*.png")))
+        print(f"sync-adapters: wrote version {version} ({n_icons} icons) into {data}")
 
 
 if __name__ == "__main__":

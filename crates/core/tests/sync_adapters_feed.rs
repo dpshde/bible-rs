@@ -1,7 +1,8 @@
-//! Contract tests for the route.bible adapters feed fixture and `scripts/sync-adapters`.
+//! Contract tests for the route.bible adapters feed fixture.
 //!
 //! Prod/preview feeds are not always live; the local fixture under
-//! `tests/fixtures/route-bible-adapters-feed/` is the offline stand-in.
+//! `tests/fixtures/route-bible-adapters-feed/` is the offline stand-in for
+//! `ROUTE_BIBLE_ADAPTERS=refresh` / `scripts/sync-adapters`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,14 +10,6 @@ use std::process::Command;
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/route-bible-adapters-feed")
-}
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("crates/core -> repo root")
-        .to_path_buf()
 }
 
 fn sha256_file(path: &Path) -> String {
@@ -53,32 +46,4 @@ fn fixture_manifest_matches_schema_v1() {
         assert_eq!(meta["width"], 64);
         assert_eq!(meta["height"], 64);
     }
-}
-
-#[test]
-fn sync_adapters_dry_run_against_fixture() {
-    let root = repo_root();
-    let script = root.join("scripts/sync-adapters");
-    let feed = fixture_dir();
-    // Empty --root so we do not short-circuit on the committed adapters.version.
-    let tmp = tempfile_dir();
-    let output = Command::new(&script)
-        .env("ROUTE_BIBLE_FEED", &feed)
-        .arg("--dry-run")
-        .arg("--root")
-        .arg(&tmp)
-        .output()
-        .unwrap_or_else(|e| panic!("run sync-adapters: {e}"));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "sync-adapters --dry-run failed:\n{stdout}\n{stderr}");
-    assert!(stdout.contains("dry-run"), "expected dry-run confirmation, got:\n{stdout}");
-    let _ = fs::remove_dir_all(&tmp);
-}
-
-fn tempfile_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("bible-rs-sync-adapters-test-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).expect("temp root");
-    dir
 }

@@ -1,10 +1,11 @@
 //! Open a passage in another Bible app or site via [route.bible](https://route.bible) adapters.
 //!
 //! The adapter list and link templates are **static**: vendored from route.bible's adapters feed
-//! into `crates/core/data/` by `scripts/sync-adapters` and embedded at compile time. Choosing an
-//! entry expands a local template for the current verse/range — no runtime network. Desktop only
-//! uses links whose `platforms` include `web` (or a desktop OS); mobile-only deep links are never
-//! opened. Specialty templates that still cannot expand fall back to a route.bible launcher URL.
+//! into `crates/core/data/` (optionally refreshed at build time with `ROUTE_BIBLE_ADAPTERS=refresh`)
+//! and embedded at compile time. Choosing an entry expands a local template for the current
+//! verse/range — no runtime network. Desktop only uses links whose `platforms` include `web`
+//! (or a desktop OS); mobile-only deep links are never opened. Specialty templates that still
+//! cannot expand fall back to a route.bible launcher URL.
 
 use std::collections::BTreeMap;
 
@@ -15,7 +16,8 @@ use crate::open_in_context;
 
 const API_BASE: &str = "https://route.bible";
 
-/// Links JSON embedded at compile time. `build.rs` stages the committed `data/` snapshot into `OUT_DIR`.
+/// Links JSON embedded at compile time. `build.rs` stages the vendored snapshot (or a refreshed
+/// feed when `ROUTE_BIBLE_ADAPTERS=refresh`) into `OUT_DIR`.
 fn bundled_links_json() -> &'static str {
     include_str!(concat!(env!("OUT_DIR"), "/adapters.links.json"))
 }
