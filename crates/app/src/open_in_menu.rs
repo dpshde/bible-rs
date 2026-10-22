@@ -17,7 +17,7 @@ const WIDTH: f32 = 240.0;
 const VISIBLE: usize = 12;
 /// Cap a single frame's wheel/trackpad step so a notch can't leap the whole list.
 const MAX_SCROLL_STEP: f32 = ITEM_HEIGHT * 3.0;
-/// Muted attribution under the list; clicking it opens route.bible.
+/// Muted attribution, the last row of the scrolling list; clicking it opens route.bible.
 pub const FOOTER_LABEL: &str = "Supplied by route.bible";
 pub const FOOTER_URL: &str = "https://route.bible";
 
@@ -83,7 +83,8 @@ impl OpenInMenu {
                 Entry::Header(_) => header_block_height(),
                 Entry::Item(_, _) => ITEM_HEIGHT,
             })
-            .sum()
+            .sum::<f32>()
+            + footer_height()
     }
 
     fn max_scroll(entries: &[Entry<'_>], view_h: f32) -> f32 {
@@ -147,7 +148,7 @@ impl OpenInMenu {
             )
         });
         let (entries, rows) = Self::entries(catalog, &self.filter);
-        let view_h = ITEM_HEIGHT * VISIBLE.min(rows.len().max(1)) as f32;
+        let view_h = (ITEM_HEIGHT * VISIBLE as f32).min(Self::content_height(&entries));
         if self.filter != prev_filter {
             self.scroll_y = 0.0;
             self.highlighted = if rows.is_empty() { None } else { Some(0) };
@@ -187,7 +188,7 @@ impl OpenInMenu {
 
         let list_h = if rows.is_empty() { ITEM_HEIGHT } else { view_h };
         let filter_h = if self.filter.is_empty() { 0.0 } else { tokens::HEADER_HEIGHT };
-        let height = PADDING_Y + filter_h + list_h + footer_height() + PADDING_Y;
+        let height = PADDING_Y + filter_h + list_h + PADDING_Y;
         let screen = ctx.content_rect();
         let pos = pos2(
             self.pos.x.min(screen.right() - WIDTH - 8.0).max(screen.left() + 8.0),
@@ -230,17 +231,6 @@ impl OpenInMenu {
                     }
                 }
                 let (left, right) = (rect.left() + PADDING_X, rect.right() - PADDING_X);
-                let footer_top = rect.bottom() - PADDING_Y - footer_height();
-                let footer = Rect::from_x_y_ranges(left..=right, footer_top..=footer_top + footer_height());
-                let footer_hit = ui.interact(footer, ui.id().with("open-in-footer"), Sense::click());
-                paint_footer(ui.painter(), p, footer, footer_hit.hovered());
-                if footer_hit.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                }
-                if footer_hit.clicked() {
-                    crate::app::open_url(FOOTER_URL);
-                    close = true;
-                }
                 let mut y = rect.top() + PADDING_Y;
                 if !self.filter.is_empty() {
                     let header = Rect::from_x_y_ranges(left..=right, y..=y + tokens::HEADER_HEIGHT);
@@ -302,26 +292,17 @@ impl OpenInMenu {
                                 );
                                 // Star toggle at the trailing edge: shown on hover, kept when starred.
                                 let is_starred = starred.contains(&adapter.id);
-                                let star = Rect::from_center_size(
-                                    pos2(r.right() - tokens::ITEM_PADDING - icon::MENU / 2.0, r.center().y),
-                                    vec2(icon::MENU, icon::MENU),
+                                let star_hit = star_toggle(
+                                    ui,
+                                    &painter,
+                                    p,
+                                    r,
+                                    list,
+                                    &adapter.id,
+                                    is_starred,
+                                    is_starred || hit.hovered(),
+                                    lit,
                                 );
-                                let star_hit = ui.interact(
-                                    star.expand(4.0).intersect(list),
-                                    ui.id().with(("open-in-star", &adapter.id)),
-                                    Sense::click(),
-                                );
-                                if is_starred || hit.hovered() || star_hit.hovered() {
-                                    let ink = match (lit, star_hit.hovered()) {
-                                        (true, _) => p.on_accent,
-                                        (false, true) => p.ink,
-                                        (false, false) => p.ink_3,
-                                    };
-                                    icons::heavy(|| icons::star(&painter, star, ink, is_starred));
-                                }
-                                if star_hit.hovered() {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                }
                                 if star_hit.clicked() {
                                     actions.push(Action::ToggleOpenInStar(adapter.id.clone()));
                                 } else if hit.clicked() {
@@ -331,6 +312,20 @@ impl OpenInMenu {
                             }
                             row_y += ITEM_HEIGHT;
                         }
+                    }
+                }
+                // The credit is the list's last row: it scrolls with the adapters.
+                let footer = Rect::from_x_y_ranges(left..=right, row_y..=row_y + footer_height());
+                if footer.intersects(list) {
+                    let footer_hit =
+                        ui.interact(footer.intersect(list), ui.id().with("open-in-footer"), Sense::click());
+                    paint_footer(&painter, p, footer, footer_hit.hovered());
+                    if footer_hit.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    if footer_hit.clicked() {
+                        crate::app::open_url(FOOTER_URL);
+                        close = true;
                     }
                 }
             });
@@ -460,6 +455,40 @@ fn paint_icon(painter: &egui::Painter, glyph: Rect, icon: &AdapterIcon, bg: Colo
                 .with_texture(icon.tex.id(), uv),
         );
     }
+}
+
+/// The star at a row's trailing edge (submenu rows and the verse menu's starred rows). Drawn
+/// filled when `starred`, and only when `visible` or itself hovered; returns its click response.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn star_toggle(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    p: &Palette,
+    row: Rect,
+    clip: Rect,
+    id: &str,
+    starred: bool,
+    visible: bool,
+    lit: bool,
+) -> egui::Response {
+    let star = Rect::from_center_size(
+        pos2(row.right() - tokens::ITEM_PADDING - icon::MENU / 2.0, row.center().y),
+        vec2(icon::MENU, icon::MENU),
+    );
+    let hit =
+        ui.interact(star.expand(4.0).intersect(clip), ui.id().with(("open-in-star", id)), Sense::click());
+    if visible || hit.hovered() {
+        let ink = match (lit, hit.hovered()) {
+            (true, _) => p.on_accent,
+            (false, true) => p.ink,
+            (false, false) => p.ink_3,
+        };
+        icons::heavy(|| icons::star(painter, star, ink, starred));
+    }
+    if hit.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    hit
 }
 
 /// Stars `id`, or unstars it when it already is. New stars go last.
@@ -628,5 +657,23 @@ mod tests {
         assert_eq!(FOOTER_LABEL, "Supplied by route.bible");
         assert_eq!(FOOTER_URL, "https://route.bible");
         assert!(footer_height() > 0.0);
+    }
+
+    #[test]
+    fn footer_is_the_last_row_of_the_scrolling_list() {
+        let catalog = Catalog::bundled();
+        let (entries, rows) = OpenInMenu::entries(&catalog, "");
+        let rows_h: f32 = entries
+            .iter()
+            .map(|e| match e {
+                Entry::Header(_) => header_block_height(),
+                Entry::Item(..) => ITEM_HEIGHT,
+            })
+            .sum();
+        assert!(rows.len() > VISIBLE);
+        assert_eq!(OpenInMenu::content_height(&entries), rows_h + footer_height());
+        // Scrolled to the end, the footer is what fills the bottom of the list.
+        let view_h = ITEM_HEIGHT * VISIBLE as f32;
+        assert_eq!(OpenInMenu::max_scroll(&entries, view_h) + view_h, rows_h + footer_height());
     }
 }

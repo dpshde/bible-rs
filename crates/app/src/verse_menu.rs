@@ -259,7 +259,22 @@ impl VerseMenu {
                                 self.highlighted == Some(i),
                                 resp.is_pointer_button_down_on(),
                             );
-                            if resp.clicked() {
+                            // Filled star on hover: unstars (the row goes) without opening.
+                            let lit = self.highlighted == Some(i);
+                            let star = crate::open_in_menu::star_toggle(
+                                ui,
+                                ui.painter(),
+                                p,
+                                r,
+                                r,
+                                id,
+                                true,
+                                resp.hovered() || lit,
+                                lit,
+                            );
+                            if star.clicked() {
+                                actions.push(Action::ToggleOpenInStar(id.clone()));
+                            } else if resp.clicked() {
                                 actions.push(Action::OpenIn(id.clone()));
                                 close = true;
                             }
