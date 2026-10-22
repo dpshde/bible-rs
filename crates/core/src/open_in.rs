@@ -17,6 +17,9 @@ use crate::open_in_context;
 
 const API_BASE: &str = "https://route.bible";
 
+/// Adapters left out of Open in › here: Simply My Bible is bible-rs itself.
+pub const NOT_IN_BIBLE_RS: &[&str] = &["simplymybible"];
+
 /// route.bible catalogType order and human labels (from their launcher UI).
 const CATALOG_TYPES: &[(&str, &str)] =
     &[("read", "Read"), ("explore", "Learn"), ("route", "Tools"), ("practice", "Practice")];
@@ -243,6 +246,7 @@ impl Catalog {
                     .iter()
                     .filter(|a| a.status != "disabled")
                     .filter(|a| a.visible_on_desktop())
+                    .filter(|a| !NOT_IN_BIBLE_RS.contains(&a.id.as_str()))
                     .filter(|a| {
                         a.catalog_type.as_deref() == Some(ctype)
                             && a.catalog_subtype.as_deref() == Some(subtype)
@@ -269,6 +273,7 @@ impl Catalog {
             .items
             .iter()
             .filter(|a| a.status != "disabled" && a.visible_on_desktop())
+            .filter(|a| !NOT_IN_BIBLE_RS.contains(&a.id.as_str()))
             .filter(|a| !grouped_ids.contains(a.id.as_str()))
             .collect();
         if !other.is_empty() {
@@ -409,6 +414,14 @@ mod tests {
         let got: Vec<&str> = catalog.starred(&ids).iter().map(|a| a.id.as_str()).collect();
         assert_eq!(got, ["wedevote", "bible-gateway"]);
         assert!(catalog.starred(&[]).is_empty());
+    }
+
+    #[test]
+    fn simply_my_bible_is_not_offered() {
+        let catalog = Catalog::bundled();
+        assert!(catalog.items.iter().any(|a| a.id == "simplymybible"), "still in the vendored data");
+        assert!(catalog.menu_items().iter().all(|a| a.id != "simplymybible"));
+        assert!(catalog.starred(&["simplymybible".to_string()]).is_empty());
     }
 
     #[test]

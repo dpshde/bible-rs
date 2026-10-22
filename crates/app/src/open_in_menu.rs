@@ -205,7 +205,7 @@ impl OpenInMenu {
                 let y = Self::adapter_y(&entries, *i);
                 if y + ITEM_HEIGHT >= self.scroll_y - ITEM_HEIGHT && y <= self.scroll_y + list_h + ITEM_HEIGHT
                 {
-                    let _ = adapter_texture(ctx, &a.id);
+                    let _ = adapter_icon(ctx, &a.id);
                 }
             }
         }
@@ -290,7 +290,7 @@ impl OpenInMenu {
                                     self.highlighted = Some(*i);
                                 }
                                 let lit = self.highlighted == Some(*i);
-                                let tex = adapter_texture(ctx, &adapter.id);
+                                let tex = adapter_icon(ctx, &adapter.id);
                                 paint_adapter_row(
                                     &painter,
                                     p,
@@ -343,11 +343,92 @@ impl OpenInMenu {
     }
 }
 
-/// An adapter's vendored favicon, decoded once and kept in the context's memory (shared by the
-/// flyout and the starred rows in the verse menu).
-pub fn adapter_texture(ctx: &egui::Context, id: &str) -> Option<TextureHandle> {
+/// An adapter's decoded favicon plus what's needed to keep it legible on any theme.
+#[derive(Clone)]
+pub struct AdapterIcon {
+    tex: TextureHandle,
+    /// A bare logo or wordmark (route.bible `fit: "contain"`): drawn whole, no rounding.
+    /// Otherwise an app tile, rounded like route.bible's.
+    contain: bool,
+    stats: IconStats,
+}
+
+/// Rounded corners for app tiles: route.bible's 7 px on a 24 px tile.
+const TILE_RADIUS: f32 = icon::MENU * 7.0 / 24.0;
+/// How far a backing tile reaches past the icon.
+const BACKING_PAD: f32 = 2.0;
+/// Below this, an icon doesn't read against the background (see [`IconStats::visibility_on`]).
+const MIN_VISIBILITY: f32 = 0.03;
+/// A pixel "reads" when its alpha-weighted luminance differs from the background by this much.
+const INK_DELTA: f32 = 0.2;
+/// Background luminances the stats are sampled at: 0, 1/STEPS, ..., 1.
+const STEPS: usize = 50;
+
+fn luminance(r: u8, g: u8, b: u8) -> f32 {
+    (0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32) / 255.0
+}
+
+fn color_luminance(c: Color32) -> f32 {
+    luminance(c.r(), c.g(), c.b())
+}
+
+/// An icon's luminance and coverage, measured once at decode so the per-frame theme check is free.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IconStats {
+    /// Share of the icon's square that stands out over a background of luminance `i / STEPS`.
+    visibility: [f32; STEPS + 1],
+    /// Alpha-weighted mean luminance of the icon's own pixels.
+    mean_lum: f32,
+}
+
+impl IconStats {
+    fn of(img: &image::RgbaImage) -> Self {
+        let n = (img.width() * img.height()).max(1) as f32;
+        let mut visibility = [0.0; STEPS + 1];
+        let (mut lum_sum, mut alpha_sum) = (0.0, 0.0);
+        for px in img.pixels() {
+            let a = px[3] as f32 / 255.0;
+            let l = luminance(px[0], px[1], px[2]);
+            lum_sum += l * a;
+            alpha_sum += a;
+            for (i, v) in visibility.iter_mut().enumerate() {
+                if a * (l - i as f32 / STEPS as f32).abs() > INK_DELTA {
+                    *v += 1.0;
+                }
+            }
+        }
+        visibility.iter_mut().for_each(|v| *v /= n);
+        let mean_lum = if alpha_sum > 0.0 { lum_sum / alpha_sum } else { 0.5 };
+        Self { visibility, mean_lum }
+    }
+
+    /// Visibility over a background of luminance `bg` (interpolated).
+    fn visibility_on(&self, bg: f32) -> f32 {
+        let x = bg.clamp(0.0, 1.0) * STEPS as f32;
+        let i = (x.floor() as usize).min(STEPS - 1);
+        let t = x - i as f32;
+        self.visibility[i] * (1.0 - t) + self.visibility[i + 1] * t
+    }
+}
+
+/// The backing tile an icon needs on a background of `bg`, or `None` when it already reads.
+/// Light logos get a dark tile, dark logos a light one, so the tile follows the theme.
+fn backing_tile(stats: &IconStats, bg: Color32) -> Option<Color32> {
+    if stats.visibility_on(color_luminance(bg)) >= MIN_VISIBILITY {
+        return None;
+    }
+    Some(if stats.mean_lum > 0.5 {
+        Color32::from_rgb(0x3A, 0x3A, 0x3E)
+    } else {
+        Color32::from_rgb(0xEC, 0xEC, 0xEE)
+    })
+}
+
+/// `id`'s icon, decoded once and kept in the context's memory (shared by the flyout and the
+/// starred rows in the verse menu).
+pub fn adapter_icon(ctx: &egui::Context, id: &str) -> Option<AdapterIcon> {
     let key = egui::Id::new(("open-in-icon", id));
-    if let Some(t) = ctx.data(|d| d.get_temp::<TextureHandle>(key)) {
+    if let Some(t) = ctx.data(|d| d.get_temp::<AdapterIcon>(key)) {
         return Some(t);
     }
     let bytes = bible_core::open_in_icons::png(id)?;
@@ -355,8 +436,30 @@ pub fn adapter_texture(ctx: &egui::Context, id: &str) -> Option<TextureHandle> {
     let size = [img.width() as usize, img.height() as usize];
     let color = ColorImage::from_rgba_unmultiplied(size, img.as_raw());
     let tex = ctx.load_texture(format!("open-in-icon-{id}"), color, TextureOptions::LINEAR);
-    ctx.data_mut(|d| d.insert_temp(key, tex.clone()));
-    Some(tex)
+    let icon = AdapterIcon {
+        tex,
+        contain: bible_core::open_in_icons::style(id).contain,
+        stats: IconStats::of(&img),
+    };
+    ctx.data_mut(|d| d.insert_temp(key, icon.clone()));
+    Some(icon)
+}
+
+/// Paints `icon` in `glyph` over `bg` (the menu surface, or the accent on a lit row), backing
+/// it with a contrasting tile only if it would otherwise disappear on this theme.
+fn paint_icon(painter: &egui::Painter, glyph: Rect, icon: &AdapterIcon, bg: Color32) {
+    if let Some(tile) = backing_tile(&icon.stats, bg) {
+        painter.rect_filled(glyph.expand(BACKING_PAD), TILE_RADIUS + BACKING_PAD, tile);
+    }
+    let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+    if icon.contain {
+        painter.image(icon.tex.id(), glyph, uv, Color32::WHITE);
+    } else {
+        painter.add(
+            egui::epaint::RectShape::filled(glyph, TILE_RADIUS, Color32::WHITE)
+                .with_texture(icon.tex.id(), uv),
+        );
+    }
 }
 
 /// Stars `id`, or unstars it when it already is. New stars go last.
@@ -396,7 +499,7 @@ pub(crate) fn paint_adapter_row(
     p: &Palette,
     r: Rect,
     label: &str,
-    tex: Option<&TextureHandle>,
+    tex: Option<&AdapterIcon>,
     lit: bool,
     pressed: bool,
 ) {
@@ -413,9 +516,8 @@ pub(crate) fn paint_adapter_row(
     let cy = r.center().y;
     let x = menu::text_left(r);
     let glyph = Rect::from_min_size(pos2(x, cy - icon::MENU / 2.0), vec2(icon::MENU, icon::MENU));
-    if let Some(tex) = tex {
-        let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
-        painter.image(tex.id(), glyph, uv, Color32::WHITE);
+    if let Some(icon) = tex {
+        paint_icon(painter, glyph, icon, if lit { p.accent } else { p.surface });
     } else {
         crate::icons::heavy(|| icons::globe(painter, glyph, ink2));
     }
@@ -440,6 +542,64 @@ pub fn passage_from_selection(refs: &[bible_core::VerseRef]) -> Option<Passage> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn stats(id: &str) -> IconStats {
+        let png = bible_core::open_in_icons::png(id).unwrap();
+        IconStats::of(&image::load_from_memory(png).unwrap().into_rgba8())
+    }
+
+    const LIGHT: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
+    const SEPIA: Color32 = Color32::from_rgb(0xFB, 0xF5, 0xE8);
+    const DARK: Color32 = Color32::from_rgb(0x26, 0x26, 0x2A);
+
+    #[test]
+    fn backing_tile_follows_the_theme() {
+        // Bible.is is a white wordmark: dark tile on light/sepia, none on dark.
+        let bible_is = stats("bible-is");
+        let tile = backing_tile(&bible_is, LIGHT).expect("white logo on white needs a tile");
+        assert!(color_luminance(tile) < 0.3);
+        assert!(backing_tile(&bible_is, SEPIA).is_some());
+        assert_eq!(backing_tile(&bible_is, DARK), None);
+        // Kindled is a near-black tile: light backing on dark, none on light.
+        let kindled = stats("kindled");
+        let tile = backing_tile(&kindled, DARK).expect("dark tile on dark needs a backing");
+        assert!(color_luminance(tile) > 0.7);
+        assert_eq!(backing_tile(&kindled, LIGHT), None);
+        // Icons that already read get nothing in either theme.
+        for id in ["bible-app", "bible-gateway", "logos"] {
+            assert_eq!(backing_tile(&stats(id), LIGHT), None, "{id} light");
+            assert_eq!(backing_tile(&stats(id), DARK), None, "{id} dark");
+        }
+    }
+
+    #[test]
+    fn every_icon_is_legible_on_every_theme() {
+        let catalog = bible_core::open_in::Catalog::bundled();
+        let mut checked = 0;
+        for a in &catalog.items {
+            if bible_core::open_in_icons::png(&a.id).is_none() {
+                continue;
+            }
+            let s = stats(&a.id);
+            for bg in [LIGHT, SEPIA, DARK] {
+                let bg_lum = color_luminance(bg);
+                match backing_tile(&s, bg) {
+                    None => assert!(s.visibility_on(bg_lum) >= MIN_VISIBILITY),
+                    Some(tile) => {
+                        let tile_lum = color_luminance(tile);
+                        assert!((tile_lum - bg_lum).abs() > 0.5, "{}: tile must stand off the menu", a.id);
+                        assert!(
+                            s.visibility_on(tile_lum) >= MIN_VISIBILITY,
+                            "{} unreadable on its tile ({bg:?})",
+                            a.id
+                        );
+                    }
+                }
+            }
+            checked += 1;
+        }
+        assert!(checked >= 60, "only {checked} icons checked");
+    }
 
     #[test]
     fn toggle_star_adds_last_and_removes() {

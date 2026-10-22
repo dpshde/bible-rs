@@ -39,8 +39,8 @@
       "webFallbackKind": "webapp"
     },
     {
-      "catalogSubtype": "bibles",
-      "catalogType": "read",
+      "catalogSubtype": "habits",
+      "catalogType": "practice",
       "confidence": "official",
       "id": "inksignal",
       "keywords": [
@@ -2080,6 +2080,6 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-22T17:10:17.777Z",
-  "version": "2026.10.22-abb9b83"
+  "generatedAt": "2026-10-22T17:35:12.170Z",
+  "version": "2026.10.22-8576059"
 }

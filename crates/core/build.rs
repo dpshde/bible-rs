@@ -35,6 +35,8 @@ fn main() {
 
     // Always start from the committed snapshot so sandboxed builds succeed.
     fs::copy(&vendored_links, &staged_links).expect("stage vendored adapters.links.json");
+    let staged_icons_json = out_dir.join("adapter-icons.json");
+    fs::copy(data.join("adapter-icons.json"), &staged_icons_json).expect("stage adapter-icons.json");
     stage_vendored_icons(&data.join("adapter-icons"), &icons_out);
 
     let refresh = env::var("ROUTE_BIBLE_ADAPTERS").ok().as_deref() == Some("refresh");
@@ -42,6 +44,8 @@ fn main() {
         match try_refresh_feed(&out_dir, &staged_links, &icons_out) {
             Ok(version) => {
                 println!("cargo:warning=route.bible adapters refresh ok (version {version})");
+                let fresh = out_dir.join("feed-cache").join(&version).join("adapter-icons.json");
+                fs::copy(&fresh, &staged_icons_json).expect("stage refreshed adapter-icons.json");
                 if let Ok(export) = env::var("ROUTE_BIBLE_ADAPTERS_OUT")
                     && let Err(e) =
                         export_refresh(&PathBuf::from(export), &staged_links, &icons_out, &version)
@@ -200,7 +204,7 @@ fn try_refresh_feed(out_dir: &Path, staged_links: &Path, icons_out: &Path) -> Re
         }
         let body = fs::read(&dest).map_err(|e| FeedError(e.to_string()))?;
         fs::copy(&dest, icons_out.join(format!("{id}.png"))).map_err(|e| FeedError(e.to_string()))?;
-        icon_records.push(serde_json::json!({
+        let mut record = serde_json::json!({
             "id": id,
             "file": format!("{id}.png"),
             "type": "png",
@@ -208,7 +212,15 @@ fn try_refresh_feed(out_dir: &Path, staged_links: &Path, icons_out: &Path) -> Re
             "sha256": expect,
             "width": meta.get("width").and_then(|v| v.as_u64()).unwrap_or(64),
             "height": meta.get("height").and_then(|v| v.as_u64()).unwrap_or(64),
-        }));
+        });
+        // route.bible's display hints: `fit` (cover = rounded tile, contain = bare logo),
+        // `theme: "invert"` (light logo, inverted on light backgrounds), `background`, `kind`.
+        for hint in ["fit", "theme", "background", "kind"] {
+            if let Some(v) = meta.get(hint) {
+                record[hint] = v.clone();
+            }
+        }
+        icon_records.push(record);
     }
 
     icon_records.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));

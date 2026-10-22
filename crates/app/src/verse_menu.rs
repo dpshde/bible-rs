@@ -79,14 +79,12 @@ impl VerseMenu {
             item(icons::compare, "Compare Translations", "C", Some(Action::Compare)),
             item(icons::columns, "Open in Parallel", "⇧⌘P", Some(Action::ToggleParallel)),
         ];
+        // Starred destinations sit right under Open in ›, in star order.
+        lines.push(Line::OpenIn);
         lines.extend(
             catalog.starred(starred).into_iter().map(|a| Line::Starred(a.id.clone(), a.name.clone())),
         );
-        lines.extend([
-            Line::OpenIn,
-            Line::Separator,
-            item(icons::text_cursor, "Select Verse Range", "⇧-click", None),
-        ]);
+        lines.extend([Line::Separator, item(icons::text_cursor, "Select Verse Range", "⇧-click", None)]);
         lines
     }
 
@@ -251,7 +249,7 @@ impl VerseMenu {
                                 self.highlighted = Some(i);
                                 self.open_in = None;
                             }
-                            let tex = crate::open_in_menu::adapter_texture(ctx, id);
+                            let tex = crate::open_in_menu::adapter_icon(ctx, id);
                             crate::open_in_menu::paint_adapter_row(
                                 ui.painter(),
                                 p,

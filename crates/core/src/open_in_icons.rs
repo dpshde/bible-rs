@@ -4,3 +4,56 @@
 //! (committed `data/adapter-icons/`, or a refreshed feed when `ROUTE_BIBLE_ADAPTERS=refresh`).
 
 include!(concat!(env!("OUT_DIR"), "/open_in_icons_gen.rs"));
+
+/// How route.bible draws an adapter's logo (the feed's display hints).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IconStyle {
+    /// `fit: "contain"`: a bare logo or wordmark, drawn whole with no rounding. Otherwise the
+    /// PNG is an app tile, drawn with rounded corners.
+    pub contain: bool,
+    /// `theme: "invert"`: a light logo made for dark backgrounds; route.bible inverts it on light ones.
+    pub invert: bool,
+}
+
+/// The display hints for `id` (defaults when the feed gave none).
+pub fn style(id: &str) -> IconStyle {
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+    static STYLES: OnceLock<HashMap<String, IconStyle>> = OnceLock::new();
+    let styles = STYLES.get_or_init(|| {
+        let raw = include_str!(concat!(env!("OUT_DIR"), "/adapter-icons.json"));
+        let v: serde_json::Value = serde_json::from_str(raw).unwrap_or_default();
+        v["icons"]
+            .as_array()
+            .map(|icons| {
+                icons
+                    .iter()
+                    .filter_map(|i| {
+                        let id = i["id"].as_str()?.to_string();
+                        let style = IconStyle {
+                            contain: i["fit"].as_str() == Some("contain"),
+                            invert: i["theme"].as_str() == Some("invert"),
+                        };
+                        Some((id, style))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    });
+    styles.get(id).copied().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod style_tests {
+    use super::*;
+
+    #[test]
+    fn route_bible_display_hints_are_vendored() {
+        assert_eq!(style("bible-is"), IconStyle { contain: true, invert: true });
+        assert_eq!(style("seekfind"), IconStyle { contain: true, invert: true });
+        assert_eq!(style("kagi-translate"), IconStyle { contain: true, invert: true });
+        assert_eq!(style("google-translate"), IconStyle { contain: true, invert: false });
+        assert_eq!(style("bible-app"), IconStyle::default());
+        assert_eq!(style("not-a-real-adapter"), IconStyle::default());
+    }
+}
