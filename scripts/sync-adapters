@@ -2,12 +2,11 @@
 """Vendor route.bible adapters into crates/core/data/ via build.rs refresh.
 
 Thin wrapper: runs `ROUTE_BIBLE_ADAPTERS=refresh cargo build -p bible-core` (feed logic and
-sha256 checks live in crates/core/build.rs), then copies the staged result into
+sha256 checks live in crates/core/build/feed.rs), then copies the staged result into
 crates/core/data/ for committing.
 
   scripts/sync-adapters
-  ROUTE_BIBLE_FEED=https://feed-route-bible-preview.dpshade.workers.dev/adapters/v1 scripts/sync-adapters
-  ROUTE_BIBLE_FEED=crates/core/tests/fixtures/route-bible-adapters-feed scripts/sync-adapters
+  ROUTE_BIBLE_FEED=<feed base URL or local dir> scripts/sync-adapters
 """
 
 from __future__ import annotations

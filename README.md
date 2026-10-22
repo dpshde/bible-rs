@@ -337,7 +337,6 @@ Other tasks:
 builds stay offline; `ROUTE_BIBLE_ADAPTERS=refresh` pulls `latest.txt` / `manifest.json` /
 sha256-verified icons (cached by version in `OUT_DIR`), falling back to the vendored copy with a
 cargo warning if the feed is unreachable. Use `scripts/sync-adapters` to vendor a new snapshot.
-Local fixture: `ROUTE_BIBLE_FEED=crates/core/tests/fixtures/route-bible-adapters-feed`.
 
 The binary doubles as a small CLI:
 
