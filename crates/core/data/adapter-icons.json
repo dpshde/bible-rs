@@ -1,0 +1,391 @@
+{
+  "version": 1,
+  "source": "https://www.route.bible/icons (app.js icon map), downscaled to 64x64 PNG",
+  "size": 64,
+  "icons": [
+    {
+      "id": "9marks",
+      "file": "9marks.png",
+      "type": "png",
+      "bytes": 2146
+    },
+    {
+      "id": "anki",
+      "file": "anki.png",
+      "type": "png",
+      "bytes": 5099
+    },
+    {
+      "id": "bear",
+      "file": "bear.png",
+      "type": "png",
+      "bytes": 3905
+    },
+    {
+      "id": "bible-app",
+      "file": "bible-app.png",
+      "type": "png",
+      "bytes": 7375
+    },
+    {
+      "id": "bible-gateway",
+      "file": "bible-gateway.png",
+      "type": "png",
+      "bytes": 3618
+    },
+    {
+      "id": "bible-hub",
+      "file": "bible-hub.png",
+      "type": "png",
+      "bytes": 6934
+    },
+    {
+      "id": "bible-is",
+      "file": "bible-is.png",
+      "type": "png",
+      "bytes": 2618
+    },
+    {
+      "id": "bible-project",
+      "file": "bible-project.png",
+      "type": "png",
+      "bytes": 2882
+    },
+    {
+      "id": "bible-study-tools",
+      "file": "bible-study-tools.png",
+      "type": "png",
+      "bytes": 2454
+    },
+    {
+      "id": "bible-thinker",
+      "file": "bible-thinker.png",
+      "type": "png",
+      "bytes": 5750
+    },
+    {
+      "id": "bibleref",
+      "file": "bibleref.png",
+      "type": "png",
+      "bytes": 5516
+    },
+    {
+      "id": "biblia",
+      "file": "biblia.png",
+      "type": "png",
+      "bytes": 4230
+    },
+    {
+      "id": "blue-letter-bible",
+      "file": "blue-letter-bible.png",
+      "type": "png",
+      "bytes": 9565
+    },
+    {
+      "id": "bolls-bible",
+      "file": "bolls-bible.png",
+      "type": "png",
+      "bytes": 4739
+    },
+    {
+      "id": "calendar",
+      "file": "calendar.png",
+      "type": "png",
+      "bytes": 2488
+    },
+    {
+      "id": "catena",
+      "file": "catena.png",
+      "type": "png",
+      "bytes": 3179
+    },
+    {
+      "id": "chatgpt",
+      "file": "chatgpt.png",
+      "type": "png",
+      "bytes": 6393
+    },
+    {
+      "id": "claude",
+      "file": "claude.png",
+      "type": "png",
+      "bytes": 8564
+    },
+    {
+      "id": "day-one",
+      "file": "day-one.png",
+      "type": "png",
+      "bytes": 3614
+    },
+    {
+      "id": "desiring-god",
+      "file": "desiring-god.png",
+      "type": "png",
+      "bytes": 665
+    },
+    {
+      "id": "drafts",
+      "file": "drafts.png",
+      "type": "png",
+      "bytes": 4881
+    },
+    {
+      "id": "enduring-word",
+      "file": "enduring-word.png",
+      "type": "png",
+      "bytes": 6832
+    },
+    {
+      "id": "esv",
+      "file": "esv.png",
+      "type": "png",
+      "bytes": 3607
+    },
+    {
+      "id": "everyones-bible",
+      "file": "everyones-bible.png",
+      "type": "png",
+      "bytes": 793
+    },
+    {
+      "id": "exedra",
+      "file": "exedra.png",
+      "type": "png",
+      "bytes": 793
+    },
+    {
+      "id": "faith-alone",
+      "file": "faith-alone.png",
+      "type": "png",
+      "bytes": 5786
+    },
+    {
+      "id": "google-translate",
+      "file": "google-translate.png",
+      "type": "png",
+      "bytes": 3024
+    },
+    {
+      "id": "got-questions",
+      "file": "got-questions.png",
+      "type": "png",
+      "bytes": 5251
+    },
+    {
+      "id": "grok",
+      "file": "grok.png",
+      "type": "png",
+      "bytes": 1732
+    },
+    {
+      "id": "inksignal",
+      "file": "inksignal.png",
+      "type": "png",
+      "bytes": 1754
+    },
+    {
+      "id": "kagi-translate",
+      "file": "kagi-translate.png",
+      "type": "png",
+      "bytes": 3674
+    },
+    {
+      "id": "kindled",
+      "file": "kindled.png",
+      "type": "png",
+      "bytes": 1352
+    },
+    {
+      "id": "ligonier",
+      "file": "ligonier.png",
+      "type": "png",
+      "bytes": 4263
+    },
+    {
+      "id": "literal-word",
+      "file": "literal-word.png",
+      "type": "png",
+      "bytes": 3650
+    },
+    {
+      "id": "logos",
+      "file": "logos.png",
+      "type": "png",
+      "bytes": 5160
+    },
+    {
+      "id": "mailto",
+      "file": "mailto.png",
+      "type": "png",
+      "bytes": 2389
+    },
+    {
+      "id": "margin-bible",
+      "file": "margin-bible.png",
+      "type": "png",
+      "bytes": 999
+    },
+    {
+      "id": "net-bible",
+      "file": "net-bible.png",
+      "type": "png",
+      "bytes": 1738
+    },
+    {
+      "id": "niv-audio-bible",
+      "file": "niv-audio-bible.png",
+      "type": "png",
+      "bytes": 4799
+    },
+    {
+      "id": "noted-bible",
+      "file": "noted-bible.png",
+      "type": "png",
+      "bytes": 1226
+    },
+    {
+      "id": "obsidian",
+      "file": "obsidian.png",
+      "type": "png",
+      "bytes": 4239
+    },
+    {
+      "id": "obsidian-reading-log",
+      "file": "obsidian-reading-log.png",
+      "type": "png",
+      "bytes": 4239
+    },
+    {
+      "id": "omnifocus",
+      "file": "omnifocus.png",
+      "type": "png",
+      "bytes": 7632
+    },
+    {
+      "id": "open-bible-crossrefs",
+      "file": "open-bible-crossrefs.png",
+      "type": "png",
+      "bytes": 858
+    },
+    {
+      "id": "open-bible-geo",
+      "file": "open-bible-geo.png",
+      "type": "png",
+      "bytes": 858
+    },
+    {
+      "id": "perplexity",
+      "file": "perplexity.png",
+      "type": "png",
+      "bytes": 2611
+    },
+    {
+      "id": "precept-austin",
+      "file": "precept-austin.png",
+      "type": "png",
+      "bytes": 1055
+    },
+    {
+      "id": "seekfind",
+      "file": "seekfind.png",
+      "type": "png",
+      "bytes": 2222
+    },
+    {
+      "id": "sermon-audio",
+      "file": "sermon-audio.png",
+      "type": "png",
+      "bytes": 2327
+    },
+    {
+      "id": "shortcuts",
+      "file": "shortcuts.png",
+      "type": "png",
+      "bytes": 6026
+    },
+    {
+      "id": "simplymybible",
+      "file": "simplymybible.png",
+      "type": "png",
+      "bytes": 4215
+    },
+    {
+      "id": "solana-nft",
+      "file": "solana-nft.png",
+      "type": "png",
+      "bytes": 4378
+    },
+    {
+      "id": "step-bible",
+      "file": "step-bible.png",
+      "type": "png",
+      "bytes": 1133
+    },
+    {
+      "id": "studybible-info",
+      "file": "studybible-info.png",
+      "type": "png",
+      "bytes": 5942
+    },
+    {
+      "id": "studylight",
+      "file": "studylight.png",
+      "type": "png",
+      "bytes": 3130
+    },
+    {
+      "id": "t3-chat",
+      "file": "t3-chat.png",
+      "type": "png",
+      "bytes": 5328
+    },
+    {
+      "id": "telegram",
+      "file": "telegram.png",
+      "type": "png",
+      "bytes": 6411
+    },
+    {
+      "id": "tgc-commentary",
+      "file": "tgc-commentary.png",
+      "type": "png",
+      "bytes": 2022
+    },
+    {
+      "id": "things-3",
+      "file": "things-3.png",
+      "type": "png",
+      "bytes": 6204
+    },
+    {
+      "id": "todoist",
+      "file": "todoist.png",
+      "type": "png",
+      "bytes": 5422
+    },
+    {
+      "id": "type-the-word",
+      "file": "type-the-word.png",
+      "type": "png",
+      "bytes": 3106
+    },
+    {
+      "id": "wedevote",
+      "file": "wedevote.png",
+      "type": "png",
+      "bytes": 4777
+    },
+    {
+      "id": "whatsapp",
+      "file": "whatsapp.png",
+      "type": "png",
+      "bytes": 7717
+    },
+    {
+      "id": "x",
+      "file": "x.png",
+      "type": "png",
+      "bytes": 2001
+    }
+  ]
+}
