@@ -1762,4 +1762,64 @@ mod ring_tests {
         assert_eq!(dominant_color(&[Some(Pink), Some(Green)]), Some(Green));
         assert_eq!(dominant_color(&[None, None]), None);
     }
+
+    /// A range highlight (one TextSpan across Romans 5:3–5, or whole-verse marks on each) puts
+    /// one ring segment per highlight part. Bookmarks alone do not appear on the rings.
+    #[test]
+    fn range_highlight_counts_each_part_on_the_chapter_ring() {
+        use bible_core::books::{BookId, VerseRef};
+        use bible_core::study::{HighlightColor, StudyStore, TextSpan};
+
+        let dir = std::env::temp_dir().join(format!("bible-rs-ring-range-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut study = StudyStore::open(&path).unwrap();
+        let r = |n: u8| VerseRef::new(BookId(44), 5, n);
+        let t3 = "Not only that, but we also rejoice in our sufferings, because we know that suffering produces perseverance;";
+        let t4 = "perseverance, character; and character, hope.";
+        let t5 = "And hope does not disappoint us, because God has poured out his love into our hearts by the Holy Spirit, whom he has given us.";
+        let text = |v: VerseRef| -> Option<String> {
+            Some(match v.verse {
+                3 => t3.into(),
+                4 => t4.into(),
+                5 => t5.into(),
+                _ => return None,
+            })
+        };
+        let start = t3.find("but we also rejoice").unwrap();
+        let start = t3[..start].chars().count();
+        study
+            .highlight_span(
+                &TextSpan { first: r(3), start, last: r(5), end: usize::MAX },
+                Some(HighlightColor::Blue),
+                text,
+            )
+            .unwrap();
+
+        // Bookmarks on the same range must not add ring marks (upstream: highlights + notes only).
+        for n in 3..=5 {
+            study.set_bookmark(r(n), Some("")).unwrap();
+        }
+
+        let act = Activity::new(&study);
+        let chapter = r(3).chapter_idx();
+        let marks = act.chapters.get(&chapter).expect("Romans 5 marked");
+        assert_eq!(marks.len(), 3, "one mark per highlight part across 5:3–5");
+        assert!(marks.iter().all(|m| *m == Some(HighlightColor::Blue)));
+        let book = act.books.get(&BookId(44)).expect("Romans book marks");
+        assert_eq!(book.highlights, 3);
+        assert_eq!(book.marks.len(), 3);
+        assert_eq!(book.notes, 0);
+
+        // Whole-verse range (shift-drag select 6–8, then a colour): still one mark per verse.
+        for n in 6..=8 {
+            study.set_highlight(r(n), Some(HighlightColor::Yellow)).unwrap();
+        }
+        let act = Activity::new(&study);
+        let marks = act.chapters.get(&chapter).expect("Romans 5 marked");
+        assert_eq!(marks.len(), 6, "3 blue parts + 3 yellow whole verses");
+        assert_eq!(act.books.get(&BookId(44)).unwrap().highlights, 6);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

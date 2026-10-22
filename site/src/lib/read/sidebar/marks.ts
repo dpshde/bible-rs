@@ -20,8 +20,9 @@ export interface Activity {
 const rank = (m: Mark) => (m === null ? HIGHLIGHT_COLORS.length : HIGHLIGHT_COLORS.indexOf(m));
 
 /** Every chapter and book with highlights or notes, and its marks: one per highlight (a verse
- *  can hold several, over different words), and one per note on a verse with no highlight, so a
- *  note on a highlighted verse doesn't count twice. Sorted by colour, so like colours sit
+ *  can hold several, over different words — including each part of a cross-verse / range
+ *  highlight), and one per note on a verse with no highlight, so a note on a highlighted verse
+ *  doesn't count twice. Bookmarks are not ring marks. Sorted by colour, so like colours sit
  *  together on the ring. */
 export function activity(highlights: StudyItem[], notes: StudyItem[]): Activity {
 	const out: Activity = { chapters: new Map(), books: new Map() };
