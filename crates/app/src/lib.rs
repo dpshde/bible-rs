@@ -27,6 +27,7 @@ pub mod native_menu;
 pub mod note_popover;
 pub mod offline;
 pub mod onboarding;
+pub mod open_in_menu;
 pub mod pages;
 pub mod palette;
 pub mod panel;

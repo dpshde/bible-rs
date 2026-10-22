@@ -59,6 +59,8 @@ pub struct Settings {
     pub share: crate::share_sheet::ShareOptions,
     /// Remind about the day's plan reading at 7:00 while the app is open.
     pub plan_reminder: bool,
+    /// Open in › destinations starred into the verse menu, by adapter id, in star order.
+    pub open_in_starred: Vec<String>,
     /// The first-launch screens are done. Settings saved before they existed count as done.
     #[serde(default = "yes")]
     pub onboarded: bool,
@@ -95,6 +97,7 @@ impl Default for Settings {
             backup_auto: true,
             backup_weekly: false,
             share: Default::default(),
+            open_in_starred: Vec::new(),
             onboarded: false,
         }
     }
@@ -254,6 +257,8 @@ pub struct BibleApp {
     sidebar_probe: Option<crate::probe::SidebarProbe>,
     reading: crate::reading::Tracker,
     verse_menu: Option<crate::verse_menu::VerseMenu>,
+    /// Destinations for the verse menu's Open in › flyout (compile-time vendored snapshot).
+    open_in_catalog: bible_core::open_in::Catalog,
     note_popover: Option<NotePopover>,
     /// The first-launch screens, until they are done.
     onboarding: Option<crate::onboarding::Onboarding>,
@@ -349,6 +354,7 @@ impl BibleApp {
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(crate::onboarding::SIZE));
             crate::onboarding::Onboarding::new(&cc.egui_ctx)
         });
+        let open_in_catalog = bible_core::open_in::Catalog::bundled();
         Self {
             data_dir,
             library,
@@ -389,6 +395,7 @@ impl BibleApp {
             sidebar_probe: crate::probe::SidebarProbe::from_env(),
             reading: Default::default(),
             verse_menu: None,
+            open_in_catalog,
             note_popover: None,
             onboarding,
             import_sheet: None,
@@ -471,6 +478,10 @@ impl BibleApp {
         // The book picker takes the single keys (arrows, return, escape) while it's open.
         let picker = crate::book_picker::is_open(ctx);
         let overlay = self.palette.is_some() || self.settings_ui.is_some() || self.shortcuts_open;
+        // The verse menu takes the arrows and escape; its Open in › flyout takes every single key,
+        // since typing there filters destinations.
+        let menu = self.verse_menu.is_some();
+        let flyout = self.verse_menu.as_ref().is_some_and(|m| m.flyout_open());
         // The rows of Settings › Shortcuts, with any chords chosen there.
         let bindings = crate::keymap::bindings(&self.settings.shortcuts);
         let anywhere = |a: &Action| matches!(a, Action::OpenPalette | Action::OpenSearch(_));
@@ -526,7 +537,7 @@ impl BibleApp {
             {
                 key(cmd, k, Action::TranslationNumber(n));
             }
-            if typing {
+            if typing || flyout {
                 return;
             }
             // Copying works with the book picker open; the reader's single keys wait for it.
@@ -537,17 +548,19 @@ impl BibleApp {
             if picker {
                 return;
             }
-            key(Modifiers::NONE, Key::ArrowLeft, Action::PrevChapter);
-            key(Modifiers::NONE, Key::ArrowRight, Action::NextChapter);
-            key(Modifiers::NONE, Key::ArrowDown, Action::ScrollLines(3.0));
-            key(Modifiers::NONE, Key::ArrowUp, Action::ScrollLines(-3.0));
+            if !menu {
+                key(Modifiers::NONE, Key::ArrowLeft, Action::PrevChapter);
+                key(Modifiers::NONE, Key::ArrowRight, Action::NextChapter);
+                key(Modifiers::NONE, Key::ArrowDown, Action::ScrollLines(3.0));
+                key(Modifiers::NONE, Key::ArrowUp, Action::ScrollLines(-3.0));
+                key(Modifiers::NONE, Key::Escape, Action::ClearSelection);
+            }
             key(Modifiers::NONE, Key::PageDown, Action::ScrollPages(1.0));
             key(Modifiers::NONE, Key::PageUp, Action::ScrollPages(-1.0));
             key(Modifiers::SHIFT, Key::Space, Action::ScrollPages(-1.0));
             key(Modifiers::NONE, Key::Space, Action::ScrollPages(1.0));
             key(Modifiers::NONE, Key::J, Action::SelectNext);
             key(Modifiers::NONE, Key::K, Action::SelectPrev);
-            key(Modifiers::NONE, Key::Escape, Action::ClearSelection);
             key(Modifiers::NONE, Key::Slash, Action::OpenSearch(None));
             key(Modifiers::SHIFT, Key::Questionmark, Action::ShowShortcuts);
             key(Modifiers::NONE, Key::Questionmark, Action::ShowShortcuts);
@@ -586,6 +599,25 @@ impl BibleApp {
         };
         let t = self.chapter_text(&id, span.first.chapter_idx());
         self.study.span_color(&span, |r| t.as_ref().and_then(|t| t.find(r)).map(|v| v.text.to_string()))
+    }
+
+    /// Where Open in › sends the selection. Words chosen in a parallel column go in that column's
+    /// translation, as copying does; whole verses in the reader's.
+    pub fn open_in_url(&self, adapter_id: &str) -> Option<String> {
+        let passage = bible_core::open_in::Passage::from_refs(&self.reader.selected_refs())?;
+        let translation = self.reader.text_span().map_or(self.settings.translation.as_str(), |(_, id)| id);
+        let verse_text = self
+            .library
+            .load(translation)
+            .ok()
+            .map(|t| bible_core::open_in::passage_plain_text(&t, passage))
+            .unwrap_or_default();
+        Some(bible_core::open_in::open_url_for(passage, adapter_id, translation, &verse_text))
+    }
+
+    /// Whether the verse menu's Open in › flyout is open (and so has the keyboard).
+    pub fn open_in_flyout_open(&self) -> bool {
+        self.verse_menu.as_ref().is_some_and(|m| m.flyout_open())
     }
 
     fn selection_or_location(&self) -> Vec<VerseRef> {
@@ -772,6 +804,23 @@ impl BibleApp {
                 if !self.reader.selected_refs().is_empty() {
                     self.verse_menu = Some(crate::verse_menu::VerseMenu::new(pos));
                 }
+            }
+            Action::OpenIn(adapter_id) => {
+                if let Some(url) = self.open_in_url(&adapter_id) {
+                    open_url(&url);
+                    let name = self
+                        .open_in_catalog
+                        .items
+                        .iter()
+                        .find(|a| a.id == adapter_id)
+                        .map(|a| a.name.as_str())
+                        .unwrap_or(adapter_id.as_str());
+                    self.toast(ctx, format!("Opening in {name}"));
+                }
+            }
+            Action::ToggleOpenInStar(id) => {
+                crate::open_in_menu::toggle_star(&mut self.settings.open_in_starred, &id);
+                self.settings.save(&mut self.study);
             }
             Action::ShareImage => {
                 let refs = self.reader.selected_refs();
@@ -1645,7 +1694,9 @@ impl BibleApp {
         ui.painter().hline(first.0 - pad..=last.0 + last.1 + pad, line, Stroke::new(1.0, p.separator));
         for (i, (x, _w)) in self.reader.columns_x.clone().into_iter().enumerate() {
             let Some(id) = cols.get(i) else { break };
-            let Some(meta) = self.library.get(id).map(|e| e.meta.clone()) else { continue };
+            let Some(meta) = self.library.get(id).map(|e| e.meta.clone()) else {
+                continue;
+            };
             let font = theme::text::UI_STRONG.font();
             let g = ui.painter().layout_no_wrap(meta.abbrev.clone(), font, p.ink);
             let pick = egui::Rect::from_min_size(egui::pos2(x, top), vec2(g.size().x + 4.0 + 12.0, 16.0));
@@ -1690,7 +1741,9 @@ impl BibleApp {
     /// While a search has results: "Result 5 of 7", a stepper and a hint, floating over the top
     /// of the text (frame 06).
     fn result_navigator(&mut self, ui: &mut Ui, reader_rect: egui::Rect, actions: &mut Vec<Action>) {
-        let Some((at, of)) = self.sidebar.result_position() else { return };
+        let Some((at, of)) = self.sidebar.result_position() else {
+            return;
+        };
         let p = self.settings.theme.palette();
         let painter = ui.painter();
         let font = theme::ui_medium(theme::text::SMALL.size);
@@ -2528,7 +2581,16 @@ impl eframe::App for BibleApp {
         let current = self.verse_menu.as_ref().and_then(|_| self.selection_color());
         if let Some(menu) = &mut self.verse_menu {
             let refs = self.reader.selected_refs();
-            if menu.show(&ctx, p, &self.study, &refs, current, &self.settings, &mut actions) {
+            if menu.show(
+                &ctx,
+                p,
+                &self.study,
+                &refs,
+                current,
+                &self.settings,
+                &self.open_in_catalog,
+                &mut actions,
+            ) {
                 self.verse_menu = None;
             }
         }

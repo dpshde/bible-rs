@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Vendor route.bible adapters into crates/core/data/ via build.rs refresh.
+
+Thin wrapper: runs `ROUTE_BIBLE_ADAPTERS=refresh cargo build -p bible-core` (feed logic and
+sha256 checks live in crates/core/build/feed.rs), then copies the staged result into
+crates/core/data/ for committing.
+
+  scripts/sync-adapters
+  ROUTE_BIBLE_FEED=<feed base URL or local dir> scripts/sync-adapters
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+REQUIRED = (
+    "adapters.links.json",
+    "adapters.version",
+    "adapter-icons.json",
+    "adapter-icons",
+)
+
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"sync-adapters: {msg}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def root_dir() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def main() -> None:
+    root = root_dir()
+    data = root / "crates" / "core" / "data"
+    build_rs = root / "crates" / "core" / "build.rs"
+    if not build_rs.is_file():
+        die(f"missing {build_rs}")
+
+    # Force build.rs to re-run even when sources are unchanged.
+    os.utime(build_rs, None)
+
+    with tempfile.TemporaryDirectory(prefix="bible-rs-adapters-out-") as staging:
+        staging_path = Path(staging)
+        env = os.environ.copy()
+        env["ROUTE_BIBLE_ADAPTERS"] = "refresh"
+        env["ROUTE_BIBLE_ADAPTERS_OUT"] = str(staging_path)
+        # Preserve caller ROUTE_BIBLE_FEED (prod default is inside build.rs).
+        print(
+            f"sync-adapters: cargo build -p bible-core "
+            f"(ROUTE_BIBLE_ADAPTERS=refresh, feed={env.get('ROUTE_BIBLE_FEED', 'https://route.bible/adapters/v1')})"
+        )
+        result = subprocess.run(
+            ["cargo", "build", "-p", "bible-core"],
+            cwd=root,
+            env=env,
+        )
+        if result.returncode != 0:
+            die(f"cargo build failed (exit {result.returncode})", result.returncode)
+
+        for name in REQUIRED:
+            if not (staging_path / name).exists():
+                die(f"refresh did not produce {name} under {staging_path}")
+
+        version = (staging_path / "adapters.version").read_text(encoding="utf-8").strip()
+        committed = data / "adapters.version"
+        if committed.is_file() and committed.read_text(encoding="utf-8").strip() == version:
+            print(f"sync-adapters: already at version {version}; nothing to commit")
+            return
+
+        data.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(staging_path / "adapters.links.json", data / "adapters.links.json")
+        shutil.copy2(staging_path / "adapter-icons.json", data / "adapter-icons.json")
+        shutil.copy2(staging_path / "adapters.version", data / "adapters.version")
+        icons_dest = data / "adapter-icons"
+        if icons_dest.exists():
+            shutil.rmtree(icons_dest)
+        shutil.copytree(staging_path / "adapter-icons", icons_dest)
+        n_icons = len(list(icons_dest.glob("*.png")))
+        print(f"sync-adapters: wrote version {version} ({n_icons} icons) into {data}")
+
+
+if __name__ == "__main__":
+    main()
