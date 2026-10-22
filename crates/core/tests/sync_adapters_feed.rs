@@ -109,3 +109,59 @@ fn rejects_inconsistent_or_missing_feeds() {
     let (r, _) = ingest(&missing);
     assert!(r.unwrap_err().0.contains("latest.txt"));
 }
+
+#[test]
+fn rejects_malformed_adapter_entries() {
+    // `adapters: [{}]` used to stage fine and then panic in `Catalog::bundled()` at startup.
+    let (r, out) = ingest(&synthetic_feed("feed-empty-adapter", |m| {
+        m["adapters"] = serde_json::json!([{}]);
+        m["adapterCount"] = 1.into();
+    }));
+    assert!(r.unwrap_err().0.contains("adapters[0].id"));
+    assert!(!out.join("adapters.links.json").exists());
+    let (r, _) = ingest(&synthetic_feed("feed-bad-links", |m| m["adapters"][1]["links"] = "nope".into()));
+    assert!(r.unwrap_err().0.contains("adapters[1].links"));
+    let (r, _) =
+        ingest(&synthetic_feed("feed-bad-status", |m| m["adapters"][0]["status"] = serde_json::Value::Null));
+    assert!(r.unwrap_err().0.contains("adapters[0].status"));
+    // build.rs keeps the vendored snapshot, which still loads.
+    assert!(!bible_core::open_in::Catalog::bundled().items.is_empty());
+}
+
+#[test]
+fn rejects_feed_paths_that_escape_the_output_dir() {
+    let escaped = Path::new(env!("CARGO_TARGET_TMPDIR")).join("escaped.png");
+    let _ = fs::remove_file(&escaped);
+    for (name, id) in
+        [("feed-icon-dotdot", "../../escaped"), ("feed-icon-abs", "/tmp/escaped"), ("feed-icon-slash", "a/b")]
+    {
+        let (r, _) = ingest(&synthetic_feed(name, |m| {
+            let meta = m["icons"]["bible-is"].clone();
+            m["icons"].as_object_mut().unwrap().insert(id.into(), meta);
+        }));
+        assert!(r.unwrap_err().0.contains("not a plain file name"), "{id}");
+    }
+    let (r, _) = ingest(&synthetic_feed("feed-icon-path", |m| {
+        m["icons"]["bible-is"]["path"] = "icons/../../feed-ok/icons/bible-is.png".into();
+    }));
+    assert!(r.unwrap_err().0.contains("leaves the feed"));
+
+    let feed = synthetic_feed("feed-version-dotdot", |m| m["version"] = "../../escaped".into());
+    fs::write(feed.join("latest.txt"), "../../escaped\n").unwrap();
+    let (r, out) = ingest(&feed);
+    assert!(r.unwrap_err().0.contains("bad latest.txt"));
+    assert!(!out.join("feed-cache").exists());
+    assert!(!escaped.exists());
+}
+
+#[test]
+fn rejects_staging_into_the_feed_cache() {
+    let feed = synthetic_feed("feed-alias", |_| {});
+    let out = feed.with_extension("out");
+    let _ = fs::remove_dir_all(&out);
+    fs::create_dir_all(&out).unwrap();
+    let cache = out.join("feed-cache").join(VERSION);
+    let r =
+        feed::refresh(feed.to_str().unwrap(), &out, &cache.join("adapters.links.json"), &cache.join("icons"));
+    assert!(r.unwrap_err().0.contains("overlap"));
+}

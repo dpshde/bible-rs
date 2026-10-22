@@ -36,7 +36,7 @@ pub fn refresh(
 
     let latest_bytes = fetch(&base, "latest.txt")?;
     let version = String::from_utf8_lossy(&latest_bytes).trim().to_string();
-    if version.is_empty() || version.contains('<') {
+    if !is_safe_name(&version) {
         return Err(FeedError(format!("bad latest.txt from {base}")));
     }
 
@@ -55,6 +55,11 @@ pub fn refresh(
     validate_manifest(&manifest, &version)?;
 
     let links_cache = cache.join("adapters.links.json");
+    let icons_cache = cache.join("icons");
+    // Staging copies out of the cache; never let a destination be (or sit inside) the cache.
+    if staged_links.starts_with(&cache) || icons_out.starts_with(&cache) || cache.starts_with(icons_out) {
+        return Err(FeedError("staging paths overlap the feed cache".into()));
+    }
     if !links_cache.is_file() {
         let adapters = manifest_adapters(&manifest)
             .ok_or_else(|| FeedError("manifest.adapters must be an array".into()))?;
@@ -73,7 +78,6 @@ pub fn refresh(
         fs::write(&links_cache, body).map_err(|e| FeedError(e.to_string()))?;
     }
 
-    let icons_cache = cache.join("icons");
     fs::create_dir_all(&icons_cache).map_err(|e| FeedError(e.to_string()))?;
 
     let icons = manifest
@@ -167,6 +171,9 @@ fn validate_manifest(manifest: &serde_json::Value, latest: &str) -> Result<(), F
     }
     let adapters =
         manifest_adapters(manifest).ok_or_else(|| FeedError("manifest.adapters must be an array".into()))?;
+    for (i, adapter) in adapters.iter().enumerate() {
+        validate_adapter(adapter).map_err(|field| FeedError(format!("manifest.adapters[{i}].{field}")))?;
+    }
     let count = manifest
         .get("adapterCount")
         .and_then(|v| v.as_u64())
@@ -179,6 +186,9 @@ fn validate_manifest(manifest: &serde_json::Value, latest: &str) -> Result<(), F
         .and_then(|v| v.as_object())
         .ok_or_else(|| FeedError("manifest.icons must be an object".into()))?;
     for (id, meta) in icons {
+        if !is_safe_name(id) {
+            return Err(FeedError(format!("icons[{id:?}] is not a plain file name")));
+        }
         let sha = meta
             .get("sha256")
             .and_then(|v| v.as_str())
@@ -186,8 +196,65 @@ fn validate_manifest(manifest: &serde_json::Value, latest: &str) -> Result<(), F
         if sha.len() != 64 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(FeedError(format!("icons[{id}].sha256 is not 64-char hex")));
         }
-        if meta.get("path").and_then(|v| v.as_str()).is_none() {
-            return Err(FeedError(format!("icons[{id}].path")));
+        let path = meta
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| FeedError(format!("icons[{id}].path")))?;
+        if path.split(['/', '\\']).any(|part| part == "..") {
+            return Err(FeedError(format!("icons[{id}].path leaves the feed")));
+        }
+    }
+    Ok(())
+}
+
+/// Versions and icon ids become file names under `OUT_DIR`: ASCII letters, digits, `.`, `-`, `_`,
+/// not starting with `.`, so no separators, `..` or absolute paths.
+fn is_safe_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('.')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
+/// Checks one adapter against what `open_in::Adapter` / `LinkTemplate` deserialize at startup
+/// (`Catalog::bundled` panics on a bad entry). Returns the first bad field.
+fn validate_adapter(a: &serde_json::Value) -> Result<(), &'static str> {
+    use serde_json::Value;
+    let string = |v: Option<&Value>| v.is_some_and(Value::is_string);
+    let defaulted_string = |v: Option<&Value>| v.is_none_or(Value::is_string);
+    let optional_string = |v: Option<&Value>| v.is_none_or(|v| v.is_null() || v.is_string());
+    if !a.is_object() {
+        return Err("(not an object)");
+    }
+    if !string(a.get("id")) {
+        return Err("id");
+    }
+    if !string(a.get("name")) {
+        return Err("name");
+    }
+    if !a.get("featuredRank").is_none_or(|v| v.is_null() || v.as_u64().is_some_and(|n| n <= u32::MAX as u64))
+    {
+        return Err("featuredRank");
+    }
+    if !defaulted_string(a.get("status")) {
+        return Err("status");
+    }
+    if !optional_string(a.get("catalogType")) {
+        return Err("catalogType");
+    }
+    if !optional_string(a.get("catalogSubtype")) {
+        return Err("catalogSubtype");
+    }
+    let Some(links) = a.get("links") else { return Ok(()) };
+    let links = links.as_array().ok_or("links")?;
+    for link in links {
+        if !link.is_object() || !string(link.get("kind")) || !string(link.get("template")) {
+            return Err("links");
+        }
+        let platforms_ok = link
+            .get("platforms")
+            .is_none_or(|p| p.as_array().is_some_and(|p| p.iter().all(Value::is_string)));
+        if !platforms_ok {
+            return Err("links.platforms");
         }
     }
     Ok(())
