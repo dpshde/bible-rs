@@ -65,6 +65,8 @@ pub struct SidebarEnv<'a> {
     /// The page in the main area: its row is selected, and the books follow the reader only
     /// while it is shown.
     pub page: crate::pages::Page,
+    /// Books pinned above the testaments, in pin order.
+    pub pinned: Vec<BookId>,
 }
 
 pub struct Sidebar {
@@ -448,6 +450,26 @@ impl Sidebar {
                     }
 
                     section(ui, p, "Books", false);
+                    // Pinned books, above the testaments: a click opens the book where it was last
+                    // read; a right-click unpins it.
+                    for &b in env.pinned.iter().filter(|b| matches(**b)) {
+                        let name = book_name(b);
+                        let resp = row(
+                            ui,
+                            p,
+                            &Row { icon: Some(crate::icons::book), label: &name, ..Row::default() },
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                        if resp.clicked() {
+                            actions.push(Action::OpenBook(b));
+                        }
+                        resp.context_menu(|ui| {
+                            if ui.button("Unpin").clicked() {
+                                actions.push(Action::UnpinBook(b));
+                                ui.close();
+                            }
+                        });
+                    }
                     for (t, (label, range)) in
                         [("Old Testament", 0..FIRST_NT_BOOK.0), ("New Testament", FIRST_NT_BOOK.0..66)]
                             .into_iter()
@@ -498,6 +520,18 @@ impl Sidebar {
                             if here && reveal && !self.filtering {
                                 resp.scroll_to_me_animation(None, egui::style::ScrollAnimation::none());
                             }
+                            let pinned = env.pinned.contains(&b);
+                            resp.context_menu(|ui| {
+                                let (label, a) = if pinned {
+                                    ("Unpin", Action::UnpinBook(b))
+                                } else {
+                                    ("Pin to Top", Action::PinBook(b))
+                                };
+                                if ui.button(label).clicked() {
+                                    actions.push(a);
+                                    ui.close();
+                                }
+                            });
                             if resp.clicked() {
                                 if b.chapters() == 1 {
                                     actions.push(Action::Jump {
