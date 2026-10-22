@@ -1,390 +1,81 @@
 #!/usr/bin/env bash
-# Refresh the vendored route.bible adapter link templates and favicons embedded by bible-rs.
+# Refresh the committed route.bible adapters snapshot under crates/core/data/.
+#
+# Thin wrapper around the opt-in build-time ingest:
+#   ROUTE_BIBLE_ADAPTERS=refresh cargo build -p bible-core
+# then copies the staged OUT_DIR artifacts back into data/ for committing.
 #
 # Usage:
 #   scripts/sync-adapters
-#   scripts/sync-adapters /path/to/adapters.links.json
-#   scripts/sync-adapters --icons-only
-#   ROUTE_BIBLE_ROOT=/path/to/route-bible scripts/sync-adapters
+#   ROUTE_BIBLE_FEED=https://route.bible/adapters/v1 scripts/sync-adapters
 #
-# Links come from packages/route-bible-adapters/config/adapters.links.json when available
-# (local ROUTE_BIBLE_ROOT, then GitHub, then the published npm package).
-# Icons come from route.bible's /icons/* as mapped in the site's app.js icon table
-# (same mapping the extension's serviceIcon / quick-search adapters use), downscaled to
-# 64×64 PNG and embedded via crates/core/src/open_in_icons.rs.
+# Offline / sandboxed: omit refresh and the build keeps using data/ as-is.
+# No CI workflow is added — release docs flip ROUTE_BIBLE_ADAPTERS=refresh when desired.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LINKS_OUT="$ROOT/crates/core/data/adapters.links.json"
-ICONS_DIR="$ROOT/crates/core/data/adapter-icons"
-ICONS_JSON="$ROOT/crates/core/data/adapter-icons.json"
-ICONS_RS="$ROOT/crates/core/src/open_in_icons.rs"
-TMP="$(mktemp)"
-TMP_JS="$(mktemp)"
-trap 'rm -f "$TMP" "$TMP_JS"' EXIT
+cd "$ROOT"
 
-ICONS_ONLY=0
-LINKS_SRC=
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --icons-only) ICONS_ONLY=1; shift ;;
-    -*) echo "sync-adapters: unknown flag: $1" >&2; exit 1 ;;
-    *) LINKS_SRC="$1"; shift ;;
-  esac
-done
+export ROUTE_BIBLE_ADAPTERS="${ROUTE_BIBLE_ADAPTERS:-refresh}"
+export ROUTE_BIBLE_FEED="${ROUTE_BIBLE_FEED:-https://route.bible/adapters/v1}"
 
-fetch_links() {
-  if [[ -n "$LINKS_SRC" ]]; then
-    [[ -f "$LINKS_SRC" ]] || { echo "sync-adapters: not a file: $LINKS_SRC" >&2; exit 1; }
-    cp "$LINKS_SRC" "$TMP"
-    echo "sync-adapters: copied $LINKS_SRC"
-    return
-  fi
-  if [[ -n "${ROUTE_BIBLE_ROOT:-}" && -f "$ROUTE_BIBLE_ROOT/packages/route-bible-adapters/config/adapters.links.json" ]]; then
-    cp "$ROUTE_BIBLE_ROOT/packages/route-bible-adapters/config/adapters.links.json" "$TMP"
-    echo "sync-adapters: copied from ROUTE_BIBLE_ROOT"
-    return
-  fi
-  local urls=(
-    "https://raw.githubusercontent.com/dpshde/route-bible/master/packages/route-bible-adapters/config/adapters.links.json"
-    "https://raw.githubusercontent.com/dpshade/selah-tools/main/packages/route-bible-adapters/config/adapters.links.json"
-    "https://cdn.jsdelivr.net/npm/@route-bible/adapters/config/adapters.links.json"
-  )
-  local url
-  for url in "${urls[@]}"; do
-    if curl -fsSL --retry 2 --retry-delay 1 -o "$TMP" "$url"; then
-      echo "sync-adapters: fetched $url"
-      return
-    fi
-  done
-  echo "sync-adapters: could not download adapters.links.json" >&2
+echo "sync-adapters: building bible-core with ROUTE_BIBLE_ADAPTERS=$ROUTE_BIBLE_ADAPTERS"
+cargo build -p bible-core 2>&1 | tee /tmp/bible-core-adapters-build.log
+
+# Locate the most recent OUT_DIR for bible-core's build script.
+OUT="$(
+  find target -type d -path '*/build/bible-core-*/out' 2>/dev/null \
+    | xargs -I{} stat -c '%Y {}' {} 2>/dev/null \
+    | sort -nr \
+    | head -1 \
+    | cut -d' ' -f2-
+)"
+if [[ -z "${OUT}" || ! -d "${OUT}" ]]; then
+  # macOS stat fallback
+  OUT="$(
+    find target -type d -path '*/build/bible-core-*/out' 2>/dev/null \
+      | xargs -I{} stat -f '%m {}' {} 2>/dev/null \
+      | sort -nr \
+      | head -1 \
+      | cut -d' ' -f2-
+  )"
+fi
+[[ -n "${OUT}" && -d "${OUT}" ]] || {
+  echo "sync-adapters: could not find bible-core OUT_DIR" >&2
   exit 1
 }
 
-if [[ "$ICONS_ONLY" -eq 0 ]]; then
-  fetch_links
-  python3 - "$TMP" "$LINKS_OUT" <<'PY'
-import json, sys
-src, out = sys.argv[1], sys.argv[2]
-with open(src, encoding="utf-8") as f:
-    data = json.load(f)
-adapters = data.get("adapters")
-if not isinstance(adapters, list) or not adapters:
-    sys.exit("sync-adapters: expected a non-empty 'adapters' array")
-for a in adapters:
-    if not isinstance(a, dict) or "id" not in a or "name" not in a:
-        sys.exit("sync-adapters: each adapter needs id and name")
-print(f"sync-adapters: {len(adapters)} adapters (version {data.get('version', '?')})")
-with open(out, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
-    f.write("\n")
-print(f"sync-adapters: wrote {out}")
-PY
+echo "sync-adapters: OUT_DIR=$OUT"
+if [[ -f "$OUT/adapters.links.json" ]]; then
+  cp "$OUT/adapters.links.json" "$ROOT/crates/core/data/adapters.links.json"
+  echo "sync-adapters: updated data/adapters.links.json"
 fi
-
-# --- icons ---
-UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
-BASE='https://www.route.bible'
-if [[ -n "${ROUTE_BIBLE_ROOT:-}" && -d "$ROUTE_BIBLE_ROOT/static/icons" ]]; then
-  echo "sync-adapters: will prefer $ROUTE_BIBLE_ROOT/static/icons when a file exists"
-fi
-
-echo "sync-adapters: fetching $BASE/app.js for the icon map"
-curl -fsSL --retry 2 -A "$UA" -e "$BASE/" -o "$TMP_JS" "$BASE/app.js"
-
-python3 - "$TMP_JS" "$ICONS_DIR" "$ICONS_JSON" "$ICONS_RS" "${ROUTE_BIBLE_ROOT:-}" <<'PY'
-import io, json, re, sys, urllib.request
-from pathlib import Path
-
-js_path, icons_dir, icons_json, icons_rs, route_root = sys.argv[1:6]
-icons_dir = Path(icons_dir)
-icons_dir.mkdir(parents=True, exist_ok=True)
-for p in icons_dir.iterdir():
-    p.unlink()
-
-js = Path(js_path).read_text(encoding="utf-8", errors="replace")
-start = js.find("ii={exedra:")
-if start < 0:
-    sys.exit("sync-adapters: could not find icon map (ii={exedra:...) in app.js")
-i = js.find("{", start)
-depth = 0
-in_str = None
-escape = False
-in_tmpl = False
-end = None
-j = i
-while j < len(js):
-    c = js[j]
-    if in_tmpl:
-        if escape:
-            escape = False
-        elif c == "\\":
-            escape = True
-        elif c == "`":
-            in_tmpl = False
-        j += 1
-        continue
-    if in_str:
-        if escape:
-            escape = False
-        elif c == "\\":
-            escape = True
-        elif c == in_str:
-            in_str = None
-        j += 1
-        continue
-    if c in ('"', "'"):
-        in_str = c
-    elif c == "`":
-        in_tmpl = True
-    elif c == "{":
-        depth += 1
-    elif c == "}":
-        depth -= 1
-        if depth == 0:
-            end = j + 1
-            break
-    j += 1
-obj = js[i:end]
-
-entries = []
-for m in re.finditer(r'(?:\{|,)"?([a-z0-9-]+)"?:\{type:"(image|svg)"', obj):
-    id_, typ = m.group(1), m.group(2)
-    brace_start = obj.find("{", m.start(1))
-    d = 0
-    k = brace_start
-    in_s = None
-    esc = False
-    in_t = False
-    chunk = None
-    while k < len(obj):
-        ch = obj[k]
-        if in_t:
-            if esc:
-                esc = False
-            elif ch == "\\":
-                esc = True
-            elif ch == "`":
-                in_t = False
-            k += 1
-            continue
-        if in_s:
-            if esc:
-                esc = False
-            elif ch == "\\":
-                esc = True
-            elif ch == in_s:
-                in_s = None
-            k += 1
-            continue
-        if ch in ('"', "'"):
-            in_s = ch
-        elif ch == "`":
-            in_t = True
-        elif ch == "{":
-            d += 1
-        elif ch == "}":
-            d -= 1
-            if d == 0:
-                chunk = obj[brace_start : k + 1]
-                break
-        k += 1
-    if not chunk:
-        continue
-    if typ == "image":
-        sm = re.search(r'src:"([^"]+)"', chunk)
-        if not sm:
-            continue
-        entries.append({"id": id_, "type": "image", "src": sm.group(1)})
-    else:
-        vb = re.search(r'viewBox:"([^"]+)"', chunk)
-        bm = re.search(r"body:`([\s\S]*?)`", chunk)
-        bg = re.search(r'bg:"([^"]+)"', chunk)
-        color = re.search(r'color:"([^"]+)"', chunk)
-        entries.append(
-            {
-                "id": id_,
-                "type": "svg",
-                "viewBox": vb.group(1) if vb else "0 0 24 24",
-                "body": bm.group(1) if bm else "",
-                "bg": bg.group(1) if bg else None,
-                "color": color.group(1) if color else None,
-            }
-        )
-
-# Known extras not always in the map but present under /icons/
-extras = ["bible-is", "seekfind"]
-have = {e["id"] for e in entries}
-for eid in extras:
-    if eid not in have:
-        entries.append({"id": eid, "type": "image", "src": f"/icons/{eid}.svg"})
-
-print(f"sync-adapters: {len(entries)} icon map entries")
-
-try:
-    from PIL import Image
-except ImportError:
-    sys.exit("sync-adapters: Pillow is required (pip install pillow)")
-try:
-    import cairosvg
-except ImportError:
-    cairosvg = None
-    print("sync-adapters: warning: cairosvg missing; SVG icons will be skipped")
-
-UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
-BASE = "https://www.route.bible"
-SIZE = 64
-route_root = Path(route_root) if route_root else None
-
-
-def fetch_bytes(src: str) -> bytes | None:
-    local_name = Path(src).name
-    if route_root:
-        for cand in [
-            route_root / "static" / "icons" / local_name,
-            route_root / "static" / "icons" / src.lstrip("/"),
-        ]:
-            if cand.is_file():
-                return cand.read_bytes()
-    req = urllib.request.Request(
-        BASE + src if src.startswith("/") else src,
-        headers={"User-Agent": UA, "Referer": BASE + "/", "Accept": "image/*,*/*"},
-    )
-    try:
-        return urllib.request.urlopen(req, timeout=30).read()
-    except Exception as e:
-        print(f"sync-adapters: fail {src}: {e}")
-        return None
-
-
-def to_rgba(im: Image.Image) -> Image.Image:
-    if im.mode in ("RGBA",):
-        return im
-    return im.convert("RGBA")
-
-
-def resize_square(im: Image.Image, size: int) -> Image.Image:
-    im = to_rgba(im)
-    w, h = im.size
-    if w == 0 or h == 0:
-        return Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    scale = min(size / w, size / h)
-    nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
-    if max(w, h) <= 32 and scale >= 1.5:
-        factor = max(1, size // max(w, h))
-        im = im.resize((w * factor, h * factor), Image.Resampling.NEAREST)
-        w, h = im.size
-        scale = min(size / w, size / h)
-        nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
-        resample = Image.Resampling.NEAREST
-    else:
-        resample = Image.Resampling.LANCZOS
-    im = im.resize((nw, nh), resample)
-    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    canvas.paste(im, ((size - nw) // 2, (size - nh) // 2), im)
-    return canvas
-
-
-kept = []
-for e in entries:
-    stem = e["id"]
-    out = icons_dir / f"{stem}.png"
-    try:
-        if e["type"] == "svg":
-            vb = e["viewBox"]
-            body = e["body"].strip()
-            color = e.get("color") or "currentColor"
-            body2 = body.replace("currentColor", color)
-            bg = e.get("bg")
-            if bg:
-                svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}"><rect width="100%" height="100%" fill="{bg}" rx="14%"/>{body2}</svg>'
-            else:
-                svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}">{body2}</svg>'
-            if cairosvg is None:
-                print(f"sync-adapters: skip svg {stem}")
-                continue
-            png_bytes = cairosvg.svg2png(bytestring=svg.encode(), output_width=SIZE * 2, output_height=SIZE * 2)
-            im = Image.open(io.BytesIO(png_bytes))
-        else:
-            data = fetch_bytes(e["src"])
-            if not data or len(data) < 40 or data[:9].lower().startswith(b"<!doctype"):
-                print(f"sync-adapters: bad download {stem}")
-                continue
-            if e["src"].lower().endswith(".svg"):
-                if cairosvg is None:
-                    print(f"sync-adapters: skip svg file {stem}")
-                    continue
-                png_bytes = cairosvg.svg2png(bytestring=data, output_width=SIZE * 2, output_height=SIZE * 2)
-                im = Image.open(io.BytesIO(png_bytes))
-            else:
-                im = Image.open(io.BytesIO(data))
-                if getattr(im, "n_frames", 1) > 1 or e["src"].lower().endswith(".ico"):
-                    best = None
-                    best_a = 0
-                    for fi in range(getattr(im, "n_frames", 1)):
-                        im.seek(fi)
-                        a = im.size[0] * im.size[1]
-                        if a >= best_a:
-                            best_a = a
-                            best = to_rgba(im.copy())
-                    im = best or im
-        im = resize_square(im, SIZE)
-        buf = io.BytesIO()
-        im.save(buf, format="PNG", optimize=True)
-        out.write_bytes(buf.getvalue())
-        kept.append({"id": stem, "file": f"{stem}.png", "type": "png", "bytes": len(buf.getvalue())})
-        print(f"sync-adapters: icon {stem} ({len(buf.getvalue())} bytes)")
-    except Exception as ex:
-        print(f"sync-adapters: fail {stem}: {ex}")
-
+if [[ -d "$OUT/adapter-icons" ]]; then
+  mkdir -p "$ROOT/crates/core/data/adapter-icons"
+  rm -f "$ROOT/crates/core/data/adapter-icons"/*.png
+  cp "$OUT/adapter-icons"/*.png "$ROOT/crates/core/data/adapter-icons/" 2>/dev/null || true
+  python3 - <<PY
+import json, pathlib
+root = pathlib.Path("$ROOT/crates/core/data/adapter-icons")
+icons = sorted(
+    {"id": p.stem, "file": p.name, "type": "png", "bytes": p.stat().st_size}
+    for p in root.glob("*.png")
+)
 manifest = {
     "version": 1,
-    "source": "https://www.route.bible (app.js icon map + /icons), downscaled to 64x64 PNG",
-    "size": SIZE,
-    "icons": sorted(kept, key=lambda x: x["id"]),
+    "source": "scripts/sync-adapters (ROUTE_BIBLE_ADAPTERS=refresh → OUT_DIR)",
+    "size": 64,
+    "icons": icons,
 }
-Path(icons_json).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-total = sum(p.stat().st_size for p in icons_dir.iterdir())
-print(f"sync-adapters: {len(kept)} icons, {total} bytes → {icons_dir}")
-
-lines = [
-    "//! Vendored route.bible adapter icons (64×64 PNG). Generated by `scripts/sync-adapters`.",
-    "//! Do not edit by hand — re-run the sync script.",
-    "",
-    "/// PNG bytes for `<adapter_id>`, if we ship an icon for it.",
-    "pub fn png(id: &str) -> Option<&'static [u8]> {",
-    "    match id {",
-]
-for e in sorted(kept, key=lambda x: x["id"]):
-    lines.append(
-        f'        "{e["id"]}" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/adapter-icons/{e["file"]}"))),'
-    )
-lines += [
-    "        _ => None,",
-    "    }",
-    "}",
-    "",
-    "#[cfg(test)]",
-    "mod tests {",
-    "    use super::*;",
-    "",
-    "    #[test]",
-    "    fn ships_featured_adapter_icons() {",
-    '        for id in ["bible-app", "bible-gateway", "logos", "got-questions"] {',
-    '            let bytes = png(id).unwrap_or_else(|| panic!("missing icon for {id}"));',
-    '            assert!(bytes.len() > 50 && bytes[0] == 0x89 && bytes[1..4] == *b"PNG", "{id} should be PNG");',
-    "        }",
-    "    }",
-    "",
-    "    #[test]",
-    "    fn unknown_adapter_has_no_icon() {",
-    '        assert!(png("not-a-real-adapter").is_none());',
-    "    }",
-    "}",
-    "",
-]
-Path(icons_rs).write_text("\n".join(lines), encoding="utf-8")
-print(f"sync-adapters: wrote {icons_rs}")
+pathlib.Path("$ROOT/crates/core/data/adapter-icons.json").write_text(
+    json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+)
+print(f"sync-adapters: {len(icons)} icons → data/adapter-icons/")
 PY
+fi
 
+if rg -q 'refresh failed|returned HTML|404' /tmp/bible-core-adapters-build.log; then
+  echo "sync-adapters: note — feed refresh did not succeed; committed snapshot was re-staged from data/" >&2
+  echo "sync-adapters: when https://route.bible/adapters/v1 is published, re-run this script." >&2
+fi
 echo "sync-adapters: done"

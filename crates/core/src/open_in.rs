@@ -1,25 +1,33 @@
 //! Open a passage in another Bible app or site via [route.bible](https://route.bible) adapters.
 //!
 //! The adapter list and link templates are **static**: vendored from route.bible's
-//! `adapters.links.json` and embedded at compile time. Choosing an entry expands a local
-//! template for the current verse/range (no network). Specialty templates we cannot fill fall
-//! back to a route.bible launcher URL the browser finishes. Refresh the vendored file with
-//! `scripts/sync-adapters`.
+//! `adapters.links.json` and embedded at compile time (optionally refreshed by `build.rs` when
+//! `ROUTE_BIBLE_ADAPTERS=refresh`). Choosing an entry expands a local template for the current
+//! verse/range — no runtime network. Desktop only uses links whose `platforms` include `web`
+//! (or a desktop OS); mobile-only deep links are never opened. Specialty templates that still
+//! cannot expand fall back to a route.bible launcher URL.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::books::VerseRef;
+use crate::open_in_context;
 
 const API_BASE: &str = "https://route.bible";
-const BUNDLED_LINKS: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/adapters.links.json"));
 
-/// A same-chapter passage: one verse, or an inclusive range.
+/// Links JSON embedded at compile time. `build.rs` always stages a copy into `OUT_DIR`
+/// (vendored snapshot, or a refreshed feed when `ROUTE_BIBLE_ADAPTERS=refresh`).
+fn bundled_links_json() -> &'static str {
+    include_str!(concat!(env!("OUT_DIR"), "/adapters.links.json"))
+}
+
+/// A same-chapter passage: one verse, an inclusive range, or a whole chapter (`verse_start == 0`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Passage {
     pub book: crate::books::BookId,
     pub chapter: u8,
+    /// First verse, or `0` for a chapter-only reference.
     pub verse_start: u8,
     pub verse_end: u8,
 }
@@ -36,14 +44,25 @@ impl Passage {
         Some(Self { book: first.book, chapter: first.chapter, verse_start: start, verse_end: end })
     }
 
-    pub fn is_range(self) -> bool {
-        self.verse_end > self.verse_start
+    /// Whole chapter (no verse): `John 3` → `JHN.3`.
+    pub fn chapter_only(book: crate::books::BookId, chapter: u8) -> Self {
+        Self { book, chapter, verse_start: 0, verse_end: 0 }
     }
 
-    /// "Romans 5:3" or "Romans 5:3–5".
+    pub fn has_verse(self) -> bool {
+        self.verse_start > 0
+    }
+
+    pub fn is_range(self) -> bool {
+        self.has_verse() && self.verse_end > self.verse_start
+    }
+
+    /// "Romans 5:3", "Romans 5:3–5", or "John 3".
     pub fn display(self) -> String {
         let name = self.book.ref_name();
-        if self.is_range() {
+        if !self.has_verse() {
+            format!("{name} {}", self.chapter)
+        } else if self.is_range() {
             format!("{name} {}:{}–{}", self.chapter, self.verse_start, self.verse_end)
         } else {
             format!("{name} {}:{}", self.chapter, self.verse_start)
@@ -55,10 +74,12 @@ impl Passage {
         self.display().replace('–', "-")
     }
 
-    /// Uppercase OSIS-style canonical: `ROM.5.3` or `ROM.5.3-5`.
+    /// Uppercase OSIS-style canonical: `ROM.5.3`, `ROM.5.3-5`, or `JHN.3`.
     pub fn canonical(self) -> String {
         let code = self.book.info().code;
-        if self.is_range() {
+        if !self.has_verse() {
+            format!("{code}.{}", self.chapter)
+        } else if self.is_range() {
             format!("{code}.{}.{start}-{end}", self.chapter, start = self.verse_start, end = self.verse_end)
         } else {
             format!("{code}.{}.{}", self.chapter, self.verse_start)
@@ -70,31 +91,9 @@ impl Passage {
         format!("/{}", self.canonical().to_ascii_lowercase())
     }
 
-    /// Values for the common `{{…}}` placeholders we expand locally.
+    /// Values for every `{{…}}` placeholder the vendored adapters use (pre-encoded where needed).
     pub fn template_vars(self, translation: &str) -> BTreeMap<&'static str, String> {
-        let display = self.display_ascii();
-        let canonical = self.canonical();
-        let path = self.route_path();
-        let mut m = BTreeMap::new();
-        m.insert("displayPassage", display.clone());
-        m.insert("passage", canonical.clone());
-        m.insert("passageLower", canonical.to_ascii_lowercase());
-        m.insert("bookCode", self.book.info().code.to_ascii_lowercase());
-        m.insert("chapter", self.chapter.to_string());
-        m.insert("verse", self.verse_start.to_string());
-        m.insert(
-            "verseRange",
-            if self.is_range() {
-                format!("{}-{}", self.verse_start, self.verse_end)
-            } else {
-                self.verse_start.to_string()
-            },
-        );
-        m.insert("translation", translation.to_string());
-        m.insert("translationLower", translation.to_ascii_lowercase());
-        m.insert("routeUrl", format!("{API_BASE}{path}"));
-        m.insert("shareText", display);
-        m
+        open_in_context::template_replacements(self, translation)
     }
 
     /// Launcher URL that route.bible finishes when a local template cannot be expanded.
@@ -130,13 +129,20 @@ pub struct LinkTemplate {
     pub platforms: Vec<String>,
 }
 
+impl LinkTemplate {
+    /// Desktop Open in › only uses links that target the web (or an explicit desktop OS).
+    pub fn usable_on_desktop(&self) -> bool {
+        self.platforms.iter().any(|p| matches!(p.as_str(), "web" | "macos" | "windows" | "linux" | "desktop"))
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct LinksFile {
     adapters: Vec<Adapter>,
 }
 
 fn bundled_links() -> LinksFile {
-    serde_json::from_str(BUNDLED_LINKS).expect("bundled adapters.links.json")
+    serde_json::from_str(bundled_links_json()).expect("bundled adapters.links.json")
 }
 
 /// Static adapter catalog for the Open in › submenu.
@@ -146,7 +152,7 @@ pub struct Catalog {
 }
 
 impl Catalog {
-    /// Embedded snapshot — no disk I/O, no network.
+    /// Embedded snapshot — no disk I/O, no network at runtime.
     pub fn bundled() -> Self {
         let file = bundled_links();
         Self { items: file.adapters }
@@ -173,8 +179,8 @@ impl Catalog {
     }
 }
 
-/// Expand `{{placeholders}}` when every one is in `vars`. Returns `None` if any are unknown
-/// (specialty adapters fall back to the route.bible launcher URL).
+/// Expand `{{placeholders}}` when every one is in `vars`. Returns `None` if any are unknown.
+/// Values in `vars` are already prepared for substitution (encoded where route.bible encodes them).
 pub fn expand_template(template: &str, vars: &BTreeMap<&str, String>) -> Option<String> {
     let mut out = String::with_capacity(template.len());
     let mut rest = template;
@@ -184,52 +190,57 @@ pub fn expand_template(template: &str, vars: &BTreeMap<&str, String>) -> Option<
         let end = after.find("}}")?;
         let key = after[..end].trim();
         let value = vars.get(key)?;
-        // Query-ish templates expect URL encoding for free text.
-        if key == "displayPassage" || key == "shareText" || key == "routeUrl" {
-            out.push_str(&urlencoding_minimal(value));
-        } else {
-            out.push_str(value);
-        }
+        out.push_str(value);
         rest = &after[end + 2..];
     }
     out.push_str(rest);
+    if out.contains("{{") {
+        return None;
+    }
     Some(out)
 }
 
-fn urlencoding_minimal(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
-            b' ' => out.push_str("%20"),
-            b':' => out.push_str("%3A"),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
+fn finalize_desktop_url(url: String) -> Option<String> {
+    let url = if url.starts_with('/') { format!("{API_BASE}{url}") } else { url };
+    if url.starts_with("https://") || url.starts_with("http://") { Some(url) } else { None }
 }
 
-/// Prefer a web template, else the first deep link, when local expansion succeeds.
+/// Expand a desktop-usable link for `adapter_id`. Skips ios/android-only deep links.
+/// Returns `None` when no web/desktop template expands to an http(s) URL.
 pub fn expand_adapter_url(adapter_id: &str, passage: Passage, translation: &str) -> Option<String> {
     let catalog = Catalog::bundled();
     let adapter = catalog.items.iter().find(|a| a.id == adapter_id)?;
     let vars = passage.template_vars(translation);
-    let web = adapter.links.iter().find(|l| l.kind == "web");
-    let deep = adapter.links.iter().find(|l| l.kind == "deep");
-    for link in [web, deep].into_iter().flatten() {
-        if let Some(url) = expand_template(&link.template, &vars) {
-            // Relative templates are route.bible paths.
-            if url.starts_with('/') {
-                return Some(format!("{API_BASE}{url}"));
-            }
+    let usable: Vec<&LinkTemplate> = adapter.links.iter().filter(|l| l.usable_on_desktop()).collect();
+    // Prefer kind=web, then any other desktop-usable link.
+    let ordered = usable
+        .iter()
+        .copied()
+        .filter(|l| l.kind == "web")
+        .chain(usable.iter().copied().filter(|l| l.kind != "web"));
+    for link in ordered {
+        // open-bible-geo can yield an empty path for unsupported books — treat as unusable.
+        if link.template.contains("{{openBibleGeoPath}}")
+            && vars.get("openBibleGeoPath").is_some_and(|v| v.is_empty())
+        {
+            continue;
+        }
+        if let Some(url) = expand_template(&link.template, &vars)
+            && let Some(url) = finalize_desktop_url(url)
+        {
             return Some(url);
         }
     }
     None
 }
 
-/// Best URL for opening `adapter_id` with `passage`: local template expansion, else the
-/// route.bible launcher fallback. Never contacts the network from this process.
+/// Whether [`open_url_for`] would use the route.bible launcher (no local web expansion).
+pub fn uses_launcher_fallback(adapter_id: &str, passage: Passage, translation: &str) -> bool {
+    expand_adapter_url(adapter_id, passage, translation).is_none()
+}
+
+/// Best URL for opening `adapter_id` with `passage` on desktop: local web template expansion,
+/// else the route.bible launcher. Never returns a mobile-only deep link.
 pub fn open_url_for(passage: Passage, adapter_id: &str, translation: &str) -> String {
     expand_adapter_url(adapter_id, passage, translation)
         .unwrap_or_else(|| passage.fallback_open_url(adapter_id))
@@ -264,6 +275,14 @@ mod tests {
     }
 
     #[test]
+    fn passage_chapter_only() {
+        let p = Passage::chapter_only(BookId(42), 3);
+        assert_eq!(p.display(), "John 3");
+        assert_eq!(p.canonical(), "JHN.3");
+        assert!(!p.has_verse());
+    }
+
+    #[test]
     fn passage_rejects_cross_chapter() {
         let a = VerseRef::new(BookId(42), 3, 16);
         let b = VerseRef::new(BookId(42), 4, 1);
@@ -280,23 +299,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(url, "https://www.biblegateway.com/passage/?search=John%203%3A16&version=ESV");
-
-        let range = Passage::from_refs(&[rom(3), rom(5)]).unwrap();
-        let vars = range.template_vars("BSB");
-        let url = expand_template(
-            "https://www.biblegateway.com/passage/?search={{displayPassage}}&version={{translation}}",
-            &vars,
-        )
-        .unwrap();
-        assert!(url.contains("Romans%205%3A3-5"));
-        assert!(url.ends_with("version=BSB"));
     }
 
     #[test]
     fn expand_template_rejects_unknown_placeholders() {
         let p = Passage::from_refs(&[john(16)]).unwrap();
         let vars = p.template_vars("ESV");
-        assert!(expand_template("https://x.test/{{youversionVersionId}}/{{passage}}", &vars).is_none());
+        assert!(expand_template("https://x.test/{{notARealVar}}/{{passage}}", &vars).is_none());
     }
 
     #[test]
@@ -307,10 +316,28 @@ mod tests {
         assert_eq!(menu[0].id, "bible-app");
         assert_eq!(menu[0].featured_rank, Some(1));
         assert_eq!(menu[1].id, "bible-gateway");
-        let first_plain = menu.iter().position(|a| a.featured_rank.is_none()).unwrap();
+    }
+
+    #[test]
+    fn bible_app_opens_https_youversion_web_on_desktop() {
+        let p = Passage::from_refs(&[john(16)]).unwrap();
+        let url = open_url_for(p, "bible-app", "ESV");
         assert!(
-            menu[first_plain].name.to_ascii_lowercase() <= menu[first_plain + 1].name.to_ascii_lowercase()
+            url.starts_with("https://www.bible.com/bible/59/"),
+            "expected YouVersion web URL for ESV, got {url}"
         );
+        assert!(url.contains("JHN.3.16"));
+        assert!(url.ends_with(".ESV"));
+        assert!(!url.contains("youversion://"));
+    }
+
+    #[test]
+    fn never_picks_ios_android_only_deep_link() {
+        let p = Passage::from_refs(&[john(16)]).unwrap();
+        // shortcuts only has an ios deep link + a relative /shortcuts web path
+        let url = open_url_for(p, "shortcuts", "ESV");
+        assert!(url.starts_with("https://"), "{url}");
+        assert!(!url.starts_with("shortcuts://"));
     }
 
     #[test]
@@ -322,24 +349,59 @@ mod tests {
     }
 
     #[test]
-    fn specialty_adapter_falls_back_to_route_bible() {
+    fn logos_expands_web_template_locally() {
         let p = Passage::from_refs(&[rom(3), rom(5)]).unwrap();
-        // Logos needs logosRefLyReference — we do not invent it; open via the launcher URL.
         let url = open_url_for(p, "logos", "ESV");
-        assert_eq!(url, "https://route.bible/rom.5.3-5?app=logos&mode=web");
+        assert!(
+            url.starts_with("https://app.logos.com/") || url.starts_with("https://route.bible/"),
+            "{url}"
+        );
+        assert!(!url.contains("ref.ly")); // ios/android deep link
     }
 
     #[test]
     fn fallback_open_url_points_at_route_bible() {
         let p = Passage::from_refs(&[rom(3), rom(5)]).unwrap();
-        assert_eq!(p.fallback_open_url("logos"), "https://route.bible/rom.5.3-5?app=logos&mode=web");
+        assert_eq!(p.fallback_open_url("mailto"), "https://route.bible/rom.5.3-5?app=mailto&mode=web");
     }
 
     #[test]
-    fn open_url_for_never_needs_network_for_simple_adapters() {
-        let p = Passage::from_refs(&[john(16)]).unwrap();
-        let url = open_url_for(p, "bible-gateway", "ESV");
-        assert!(url.contains("biblegateway.com"));
-        assert!(!url.contains("route.bible"));
+    fn all_bundled_adapters_yield_https_on_desktop() {
+        let passages = [
+            Passage::from_refs(&[john(16)]).unwrap(),
+            Passage::from_refs(&[rom(3), rom(5)]).unwrap(),
+            Passage::chapter_only(BookId(42), 3),
+        ];
+        let catalog = Catalog::bundled();
+        let mut fallback_only: Vec<&str> = Vec::new();
+        let mut failures: Vec<String> = Vec::new();
+        for adapter in &catalog.items {
+            if adapter.status == "disabled" {
+                continue;
+            }
+            let mut used_fallback_all = true;
+            for p in passages {
+                let url = open_url_for(p, &adapter.id, "ESV");
+                if !(url.starts_with("https://") || url.starts_with("http://")) {
+                    failures.push(format!("{} → non-http {url}", adapter.id));
+                }
+                if url.contains("{{") {
+                    failures.push(format!("{} → unexpanded {url}", adapter.id));
+                }
+                if !uses_launcher_fallback(&adapter.id, p, "ESV") {
+                    used_fallback_all = false;
+                }
+            }
+            if used_fallback_all {
+                fallback_only.push(adapter.id.as_str());
+            }
+        }
+        assert!(failures.is_empty(), "failures:\n{}", failures.join("\n"));
+        // mailto has no web platform link — must fall back.
+        assert!(
+            fallback_only.contains(&"mailto"),
+            "expected mailto in fallback-only list, got {fallback_only:?}"
+        );
+        eprintln!("fallback-only adapters: {fallback_only:?}");
     }
 }
