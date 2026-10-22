@@ -328,9 +328,16 @@ Other tasks:
 |---|---|
 | `cargo test --workspace` | core (model, format, importers, search, references, study, online with a mock server), typesetting and FFI tests |
 | `cargo run -p xtask -- build-data` | re-download the pinned public-domain sources and regenerate `data/translations/*.bbl` |
-| `ROUTE_BIBLE_ADAPTERS=refresh cargo build -p bible-core` | opt-in: pull route.bible’s adapters feed into `OUT_DIR` (offline builds keep `crates/core/data/`; see `scripts/sync-adapters`) |
+| `scripts/sync-adapters` | pull route.bible’s adapters feed into `crates/core/data/` (override with `ROUTE_BIBLE_FEED=…`) |
 | `scripts/screenshots.sh` | regenerate `docs/screenshots/` under Xvfb |
 | `BIBLE_RS_HOME=/some/dir bible-rs` | use another data folder |
+
+**route.bible adapters.** Open in › uses a vendored snapshot of route.bible’s adapter catalog
+(`crates/core/data/`). `scripts/sync-adapters` is the only ingest path: it reads
+`ROUTE_BIBLE_FEED` (default `https://route.bible/adapters/v1`), verifies icon sha256s, and writes
+`adapters.links.json`, icons, and `adapters.version`. CI runs it daily (and on
+`repository_dispatch` type `route-bible-adapters`) and opens a single sync PR when the version
+changes. Local fixture: `ROUTE_BIBLE_FEED=crates/core/tests/fixtures/route-bible-adapters-feed`.
 
 The binary doubles as a small CLI:
 

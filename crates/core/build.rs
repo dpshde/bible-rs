@@ -1,19 +1,12 @@
-//! Stage route.bible adapter links (and optionally icons) into `OUT_DIR` for `include_str!`.
+//! Stage vendored route.bible adapter links and icons into `OUT_DIR` for `include_str!` /
+//! `include_bytes!`.
 //!
-//! **Default (offline-safe):** copy the committed snapshot from `data/` into `OUT_DIR`.
-//! **Opt-in refresh:** set `ROUTE_BIBLE_ADAPTERS=refresh` to pull
-//! `{ROUTE_BIBLE_FEED}/latest.txt` + `manifest.json` + assets (default feed base
-//! `https://route.bible/adapters/v1`). Failed or sandboxed fetches warn and keep the vendored
-//! snapshot — upstream builds are never forced onto the network.
-//!
-//! Why an env var (not a Cargo feature): features that hit the network at compile time surprise
-//! dependents (ffi/web) and fight `CARGO_NET_OFFLINE`. An explicit env flag matches Rust norms
-//! for optional build-time network (release docs flip it on; day-to-day builds stay offline).
+//! Offline-only: copies the committed snapshot from `data/` (updated by `scripts/sync-adapters`
+//! from the route.bible adapters feed). Builds never hit the network.
 
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -27,27 +20,10 @@ fn main() {
     println!("cargo:rerun-if-changed={}", vendored_links.display());
     println!("cargo:rerun-if-changed={}", data.join("adapter-icons").display());
     println!("cargo:rerun-if-changed={}", data.join("adapter-icons.json").display());
-    println!("cargo:rerun-if-env-changed=ROUTE_BIBLE_ADAPTERS");
-    println!("cargo:rerun-if-env-changed=ROUTE_BIBLE_FEED");
+    println!("cargo:rerun-if-changed={}", data.join("adapters.version").display());
 
-    // Always start from the committed snapshot so sandboxed builds succeed.
     fs::copy(&vendored_links, &staged_links).expect("stage vendored adapters.links.json");
     stage_vendored_icons(&data.join("adapter-icons"), &icons_out);
-
-    let refresh = env::var("ROUTE_BIBLE_ADAPTERS").ok().as_deref() == Some("refresh");
-    if refresh {
-        match try_refresh_feed(&out_dir, &staged_links, &icons_out) {
-            Ok(version) => {
-                println!("cargo:warning=route.bible adapters refresh ok (version {version})");
-            }
-            Err(e) => {
-                println!(
-                    "cargo:warning=route.bible adapters refresh failed ({e}); using vendored snapshot in data/"
-                );
-            }
-        }
-    }
-
     write_icons_module(&icons_out, &gen_icons);
 }
 
@@ -101,193 +77,4 @@ fn write_icons_module(icons_dir: &Path, dest: &Path) {
              assert!(png(\"not-a-real-adapter\").is_none());\n    }\n}\n",
     );
     fs::write(dest, out).expect("write open_in_icons_gen.rs");
-}
-
-#[derive(Debug)]
-struct FeedError(String);
-impl std::fmt::Display for FeedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-impl std::error::Error for FeedError {}
-
-fn try_refresh_feed(out_dir: &Path, staged_links: &Path, icons_out: &Path) -> Result<String, FeedError> {
-    let base = env::var("ROUTE_BIBLE_FEED").unwrap_or_else(|_| "https://route.bible/adapters/v1".into());
-    let base = base.trim_end_matches('/').to_string();
-    let latest = http_get(&format!("{base}/latest.txt"))?;
-    let version = String::from_utf8_lossy(&latest).trim().to_string();
-    if version.is_empty() || version.contains('<') {
-        return Err(FeedError(format!("bad latest.txt from {base}")));
-    }
-
-    let cache = out_dir.join("feed-cache").join(&version);
-    fs::create_dir_all(&cache).map_err(|e| FeedError(e.to_string()))?;
-    let manifest_path = cache.join("manifest.json");
-    if !manifest_path.is_file() {
-        let body = http_get(&format!("{base}/{version}/manifest.json"))
-            .or_else(|_| http_get(&format!("{base}/manifest.json")))?;
-        fs::write(&manifest_path, body).map_err(|e| FeedError(e.to_string()))?;
-    }
-    let manifest: serde_json::Value =
-        serde_json::from_slice(&fs::read(&manifest_path).map_err(|e| FeedError(e.to_string()))?)
-            .map_err(|e| FeedError(format!("manifest JSON: {e}")))?;
-
-    // links: either inline path relative to version, or absolute URL
-    let links_rel = manifest
-        .pointer("/links/path")
-        .or_else(|| manifest.get("linksJson"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("adapters.links.json");
-    let links_sha =
-        manifest.pointer("/links/sha256").and_then(|v| v.as_str()).map(|s| s.to_ascii_lowercase());
-    let links_cache = cache.join("adapters.links.json");
-    if !links_cache.is_file() {
-        let url = if links_rel.starts_with("http") {
-            links_rel.to_string()
-        } else {
-            format!("{base}/{version}/{links_rel}")
-        };
-        let body = http_get(&url).or_else(|_| http_get(&format!("{base}/{links_rel}")))?;
-        if let Some(expect) = &links_sha {
-            let got = sha256_hex(&body);
-            if got != *expect {
-                return Err(FeedError(format!("links sha256 mismatch: got {got}, expected {expect}")));
-            }
-        }
-        fs::write(&links_cache, &body).map_err(|e| FeedError(e.to_string()))?;
-    }
-    fs::copy(&links_cache, staged_links).map_err(|e| FeedError(e.to_string()))?;
-
-    // icons[]
-    if let Some(icons) = manifest.get("icons").and_then(|v| v.as_array()) {
-        let icons_cache = cache.join("icons");
-        fs::create_dir_all(&icons_cache).map_err(|e| FeedError(e.to_string()))?;
-        for icon in icons {
-            let id = icon.get("id").and_then(|v| v.as_str()).ok_or_else(|| FeedError("icon.id".into()))?;
-            let default_path = format!("icons/{id}.png");
-            let path = icon.get("path").and_then(|v| v.as_str()).unwrap_or(default_path.as_str());
-            let expect = icon
-                .get("sha256")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_ascii_lowercase())
-                .ok_or_else(|| FeedError(format!("icon {id} missing sha256")))?;
-            let dest = icons_cache.join(format!("{id}.png"));
-            if !dest.is_file() {
-                let url = if path.starts_with("http") {
-                    path.to_string()
-                } else {
-                    format!("{base}/{version}/{path}")
-                };
-                let body = http_get(&url)?;
-                let got = sha256_hex(&body);
-                if got != expect {
-                    return Err(FeedError(format!("icon {id} sha256 mismatch: got {got}")));
-                }
-                fs::write(&dest, body).map_err(|e| FeedError(e.to_string()))?;
-            } else {
-                let body = fs::read(&dest).map_err(|e| FeedError(e.to_string()))?;
-                let got = sha256_hex(&body);
-                if got != expect {
-                    return Err(FeedError(format!("cached icon {id} sha256 mismatch")));
-                }
-            }
-            fs::copy(&dest, icons_out.join(format!("{id}.png"))).map_err(|e| FeedError(e.to_string()))?;
-        }
-    }
-
-    Ok(version)
-}
-
-fn http_get(url: &str) -> Result<Vec<u8>, FeedError> {
-    // curl is available in release/CI environments; keep build-dependencies at zero for the
-    // default offline path. Fail soft when curl is missing or the feed 404s.
-    let output = Command::new("curl")
-        .args([
-            "-fsSL",
-            "--retry",
-            "2",
-            "--retry-delay",
-            "1",
-            "-A",
-            "bible-rs-build/0.2 (adapters refresh)",
-            url,
-        ])
-        .output()
-        .map_err(|e| FeedError(format!("curl {url}: {e}")))?;
-    if !output.status.success() {
-        return Err(FeedError(format!("curl {url} exited {}", output.status.code().unwrap_or(-1))));
-    }
-    if output.stdout.starts_with(b"<!doctype") || output.stdout.starts_with(b"<!DOCTYPE") {
-        return Err(FeedError(format!("{url} returned HTML, not the feed")));
-    }
-    Ok(output.stdout)
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    // Minimal SHA-256 so we don't pull build-deps for the offline default path.
-    // Prefer the `sha2` crate if this grows; for now use `shasum`/`sha256sum` when verifying
-    // fetched bodies via an external helper, and a tiny pure-Rust impl for in-process checks.
-    sha256::digest(bytes)
-}
-
-mod sha256 {
-    // Tiny SHA-256 (public domain style) — enough to verify feed icon digests at build time.
-    // Avoids a build-dependency for the common offline compile path.
-
-    pub fn digest(data: &[u8]) -> String {
-        let mut h: [u32; 8] =
-            [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
-        let bit_len = (data.len() as u64) * 8;
-        let mut buf = data.to_vec();
-        buf.push(0x80);
-        while (buf.len() % 64) != 56 {
-            buf.push(0);
-        }
-        buf.extend_from_slice(&bit_len.to_be_bytes());
-        for chunk in buf.chunks_exact(64) {
-            let mut w = [0u32; 64];
-            for i in 0..16 {
-                w[i] = u32::from_be_bytes(chunk[i * 4..i * 4 + 4].try_into().unwrap());
-            }
-            for i in 16..64 {
-                let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-                let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-                w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
-            }
-            let mut a = h;
-            for i in 0..64 {
-                let s1 = a[4].rotate_right(6) ^ a[4].rotate_right(11) ^ a[4].rotate_right(25);
-                let ch = (a[4] & a[5]) ^ ((!a[4]) & a[6]);
-                let t1 = a[7].wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
-                let s0 = a[0].rotate_right(2) ^ a[0].rotate_right(13) ^ a[0].rotate_right(22);
-                let maj = (a[0] & a[1]) ^ (a[0] & a[2]) ^ (a[1] & a[2]);
-                let t2 = s0.wrapping_add(maj);
-                a[7] = a[6];
-                a[6] = a[5];
-                a[5] = a[4];
-                a[4] = a[3].wrapping_add(t1);
-                a[3] = a[2];
-                a[2] = a[1];
-                a[1] = a[0];
-                a[0] = t1.wrapping_add(t2);
-            }
-            for i in 0..8 {
-                h[i] = h[i].wrapping_add(a[i]);
-            }
-        }
-        h.iter().map(|x| format!("{x:08x}")).collect()
-    }
-
-    #[rustfmt::skip]
-    const K: [u32; 64] = [
-        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
-        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
-        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
-        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
-        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
-        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
-        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
-        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
-    ];
 }

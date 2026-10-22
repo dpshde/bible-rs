@@ -1,391 +1,583 @@
 {
   "version": 1,
-  "source": "https://www.route.bible/icons (app.js icon map), downscaled to 64x64 PNG",
+  "source": "route.bible adapters feed (fixture-2026-03-10)",
   "size": 64,
   "icons": [
     {
       "id": "9marks",
       "file": "9marks.png",
       "type": "png",
-      "bytes": 2146
+      "bytes": 2146,
+      "sha256": "12e3d6cc7280dc199ac8c5454b4fce29c44816e9d75e171c8d68269352e77272",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "anki",
       "file": "anki.png",
       "type": "png",
-      "bytes": 5099
+      "bytes": 5099,
+      "sha256": "75f3a07472ed7105b7254191590a1f62e2c5d9c8f1ba66ba8fc95498d682a002",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bear",
       "file": "bear.png",
       "type": "png",
-      "bytes": 3905
+      "bytes": 3905,
+      "sha256": "28f56ae6984478fb090167b21cc1fcdc7e2f8f8415de4f747f4b344fa2b58b12",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bible-app",
       "file": "bible-app.png",
       "type": "png",
-      "bytes": 7375
+      "bytes": 7375,
+      "sha256": "047ece14d03f43ef76370d35360b3c745fff627c361ae2ceb660c8045de22fd1",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bible-gateway",
       "file": "bible-gateway.png",
       "type": "png",
-      "bytes": 3618
+      "bytes": 3618,
+      "sha256": "8714a469785fe90217c033a186201f5c99972e519112cac32aca9e3b9c1351f8",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bible-hub",
       "file": "bible-hub.png",
       "type": "png",
-      "bytes": 6934
+      "bytes": 6934,
+      "sha256": "6fd237dc2afc3e473992df3ebfce120ad89bb35f231a43c90a57c12a48bd9f1d",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bible-is",
       "file": "bible-is.png",
       "type": "png",
-      "bytes": 2618
+      "bytes": 2618,
+      "sha256": "46c4a0ae218ab352011d4e60f3d9304e6c9951d120658f9b88fdfe99af076acf",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bible-project",
       "file": "bible-project.png",
       "type": "png",
-      "bytes": 2882
+      "bytes": 2882,
+      "sha256": "17734640c11b1c7aae5eaa777c082dbd707e9f99a6409450bfbc8312d136e2f2",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bible-study-tools",
       "file": "bible-study-tools.png",
       "type": "png",
-      "bytes": 2454
+      "bytes": 2454,
+      "sha256": "4d3e8b60a1061a0d607b3a449eb862ded58980b1818ba4b22086a3dea291f81c",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bible-thinker",
       "file": "bible-thinker.png",
       "type": "png",
-      "bytes": 5750
+      "bytes": 5750,
+      "sha256": "400bf1e84312ed225fa38cf1e9d98144a6b72dad5fa0a4610eb394f7156f5f67",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bibleref",
       "file": "bibleref.png",
       "type": "png",
-      "bytes": 5516
+      "bytes": 5516,
+      "sha256": "b75c048afd966fa3bc43fd5eaf652e2e1571f1e8aea6ce5724c963f7e76f8ef1",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "biblia",
       "file": "biblia.png",
       "type": "png",
-      "bytes": 4230
+      "bytes": 4230,
+      "sha256": "188e2434099fca69aa9222a34ff2effe907ea57a000a3c41536ed656b48d5920",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "blue-letter-bible",
       "file": "blue-letter-bible.png",
       "type": "png",
-      "bytes": 9565
+      "bytes": 9565,
+      "sha256": "c4c55ff649b7ba4be1d8db4931d6159498104ee9a32f12f97a2c9092e0bc84e1",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "bolls-bible",
       "file": "bolls-bible.png",
       "type": "png",
-      "bytes": 4739
+      "bytes": 4739,
+      "sha256": "5d818eaf14b44cbbac5cbcd0d77af0e76242c24e6c8225a6546c5f21a6130c40",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "calendar",
       "file": "calendar.png",
       "type": "png",
-      "bytes": 2488
+      "bytes": 2488,
+      "sha256": "84644b2f4b8ba6124c1106d247b4506561bffdcf28ced387209c3ab134eb4710",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "catena",
       "file": "catena.png",
       "type": "png",
-      "bytes": 3179
+      "bytes": 3179,
+      "sha256": "0e8463a4ad7745173f2b3b355e6ba6f9971f72c05e5e0add1a831109a1f5e19d",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "chatgpt",
       "file": "chatgpt.png",
       "type": "png",
-      "bytes": 6393
+      "bytes": 6393,
+      "sha256": "1f5c02d774d0287ebc39a86a7255e8f9c1daf2c6321c6915e7d0167707bc857b",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "claude",
       "file": "claude.png",
       "type": "png",
-      "bytes": 8564
+      "bytes": 8564,
+      "sha256": "ef90175e8ee1c8a129131de98cf474b6b17bd1046e3d3776bee070886f61c7f6",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "day-one",
       "file": "day-one.png",
       "type": "png",
-      "bytes": 3614
+      "bytes": 3614,
+      "sha256": "ddbab4699913d34d0a0a92e306741cfadd606cc1039285b3a77c5c61f46d40b9",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "desiring-god",
       "file": "desiring-god.png",
       "type": "png",
-      "bytes": 665
+      "bytes": 665,
+      "sha256": "7a58adae84029fff20cc831f4b8363026415f900e2d4d94f3b6ad23efdfacb66",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "drafts",
       "file": "drafts.png",
       "type": "png",
-      "bytes": 4881
+      "bytes": 4881,
+      "sha256": "ff51b9bf319b39af344e7816badf391e6c973c02642e94059d90fad7cca65fae",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "enduring-word",
       "file": "enduring-word.png",
       "type": "png",
-      "bytes": 6832
+      "bytes": 6832,
+      "sha256": "8c7cff1549fdd1c9d95333a6794237d319ef76cda132dc2d620883bc4d483d16",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "esv",
       "file": "esv.png",
       "type": "png",
-      "bytes": 3607
+      "bytes": 3607,
+      "sha256": "cdfcaa21e94627ce6d43f41fe3c2264f927f7f0ccf148211ebe8d8ecfe251f1a",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "everyones-bible",
       "file": "everyones-bible.png",
       "type": "png",
-      "bytes": 793
+      "bytes": 793,
+      "sha256": "fe1717e23d000442e605b34798cb852df8d178f573d486eae9be1ba30fa072e3",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "exedra",
       "file": "exedra.png",
       "type": "png",
-      "bytes": 793
+      "bytes": 793,
+      "sha256": "fe1717e23d000442e605b34798cb852df8d178f573d486eae9be1ba30fa072e3",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "faith-alone",
       "file": "faith-alone.png",
       "type": "png",
-      "bytes": 5786
+      "bytes": 5786,
+      "sha256": "837cc0da45277eea9ada26cbe7494172826685982c59e5f1cdbdadf830f72a1b",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "google-translate",
       "file": "google-translate.png",
       "type": "png",
-      "bytes": 3024
+      "bytes": 3024,
+      "sha256": "dcf3eee19ae41429f285dc0d6d45775a0c082759da4a9ee661b87c8dd0152ece",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "got-questions",
       "file": "got-questions.png",
       "type": "png",
-      "bytes": 5251
+      "bytes": 5251,
+      "sha256": "fc8541d7a734d324f451807b5b9206147c3046406419d72052ff3582dd7f09d1",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "grok",
       "file": "grok.png",
       "type": "png",
-      "bytes": 1732
+      "bytes": 1732,
+      "sha256": "c6e3ff0a606ea73ee8311d171a4b053fcf0af62869c1ad0074600d08c0e23153",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "inksignal",
       "file": "inksignal.png",
       "type": "png",
-      "bytes": 1754
+      "bytes": 1754,
+      "sha256": "de93fe9db74b9fbf69c36b8cc182d72c66fa645e0e6656c7b0f7d0b4b8850353",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "kagi-translate",
       "file": "kagi-translate.png",
       "type": "png",
-      "bytes": 3674
+      "bytes": 3674,
+      "sha256": "300fe06bc93428094f0e8f4940b9f29e11456ea11909e048c7105f36d83de1ff",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "kindled",
       "file": "kindled.png",
       "type": "png",
-      "bytes": 1352
+      "bytes": 1352,
+      "sha256": "31dfd4701fc11655fe86d7efdab24250ef2e0e276ecb4a48ad5b317bf3c325d8",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "ligonier",
       "file": "ligonier.png",
       "type": "png",
-      "bytes": 4263
+      "bytes": 4263,
+      "sha256": "0935f7509f3e411bb7ca9be0615a29a88e88784e101f646102e260866cf0f1c6",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "literal-word",
       "file": "literal-word.png",
       "type": "png",
-      "bytes": 3650
+      "bytes": 3650,
+      "sha256": "618a35fe74f28e8e1759b48e6f51225491c7c6f263d3c282716f7d58b5c93b8b",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "logos",
       "file": "logos.png",
       "type": "png",
-      "bytes": 5160
+      "bytes": 5160,
+      "sha256": "500035ce969f013ed3db324f245426c545607c6c5bfb71a7b1c1ed871281374b",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "mailto",
       "file": "mailto.png",
       "type": "png",
-      "bytes": 2389
+      "bytes": 2389,
+      "sha256": "a90558dbcafea448cb9b405ac01e355fb956453419b8fe785a65720b751a56f4",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "margin-bible",
       "file": "margin-bible.png",
       "type": "png",
-      "bytes": 999
+      "bytes": 999,
+      "sha256": "4d0926f50685c07f5f4150b541449764e278646ad6135974285eac4b60ecff01",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "net-bible",
       "file": "net-bible.png",
       "type": "png",
-      "bytes": 1738
+      "bytes": 1738,
+      "sha256": "afd15c4d1aa44a07df1bca5d8ec1dd01e2d9803a5f754f629a8c468343322bd6",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "niv-audio-bible",
       "file": "niv-audio-bible.png",
       "type": "png",
-      "bytes": 4799
+      "bytes": 4799,
+      "sha256": "6498a188acca367ab2247e510cc4faf47624e674660fd0537adcd51ea2d9d521",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "noted-bible",
       "file": "noted-bible.png",
       "type": "png",
-      "bytes": 1226
+      "bytes": 1226,
+      "sha256": "b05d56adc65bd6af4f363c5f46878015fc42a0760db544e092de558d130b4a84",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "obsidian",
       "file": "obsidian.png",
       "type": "png",
-      "bytes": 4239
+      "bytes": 4239,
+      "sha256": "326f33a3721247a393b3d09497e3321a3164e3c444fc24b120ca30159e3f802c",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "obsidian-reading-log",
       "file": "obsidian-reading-log.png",
       "type": "png",
-      "bytes": 4239
+      "bytes": 4239,
+      "sha256": "326f33a3721247a393b3d09497e3321a3164e3c444fc24b120ca30159e3f802c",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "omnifocus",
       "file": "omnifocus.png",
       "type": "png",
-      "bytes": 7632
+      "bytes": 7632,
+      "sha256": "aa0d25819f7baf5ad4a3979f02d1375c622dda6e749d0155bf314291190e7515",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "open-bible-crossrefs",
       "file": "open-bible-crossrefs.png",
       "type": "png",
-      "bytes": 858
+      "bytes": 858,
+      "sha256": "af36ede05e780e36225f9c9d97b2b17a1b5da2de5eb8e21cdf06ece3db39071a",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "open-bible-geo",
       "file": "open-bible-geo.png",
       "type": "png",
-      "bytes": 858
+      "bytes": 858,
+      "sha256": "af36ede05e780e36225f9c9d97b2b17a1b5da2de5eb8e21cdf06ece3db39071a",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "perplexity",
       "file": "perplexity.png",
       "type": "png",
-      "bytes": 2611
+      "bytes": 2611,
+      "sha256": "eb569b0844bab30f54f0732e6475900540282ed6dd0bdd04accc3561840d806d",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "precept-austin",
       "file": "precept-austin.png",
       "type": "png",
-      "bytes": 1055
+      "bytes": 1055,
+      "sha256": "c188bf976978414e0e15f32b215703ad4934e2c2eb6f968c16ce3bd63c1ceac9",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "seekfind",
       "file": "seekfind.png",
       "type": "png",
-      "bytes": 2222
+      "bytes": 2222,
+      "sha256": "f1ffca0a49fe3445a0bd73d52d76c14fa141a45acc615c18f72bfbfe1181aa4a",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "sermon-audio",
       "file": "sermon-audio.png",
       "type": "png",
-      "bytes": 2327
+      "bytes": 2327,
+      "sha256": "0f9d0a5a243ef3176591b0d26a3676e42893beea90c5582eb4232982fa747e8c",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "shortcuts",
       "file": "shortcuts.png",
       "type": "png",
-      "bytes": 6026
+      "bytes": 6026,
+      "sha256": "be6fd5241ac03224403f44cbb1c761b7563dff871fd7962a82f7f1979553c1e1",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "simplymybible",
       "file": "simplymybible.png",
       "type": "png",
-      "bytes": 4215
+      "bytes": 4215,
+      "sha256": "dc99b016c2e5e336821c2368e7ac02821998c817d1edb423e110d2b97a3e9ace",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "solana-nft",
       "file": "solana-nft.png",
       "type": "png",
-      "bytes": 4378
+      "bytes": 4378,
+      "sha256": "9403b115e3422682fcf2f9b800982cb03314ebd7f41d66648e4e107aad1cde9a",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "step-bible",
       "file": "step-bible.png",
       "type": "png",
-      "bytes": 1133
+      "bytes": 1133,
+      "sha256": "f25ae831e8430a1cdadb8eba5b976ce1eba6ad2803abf9a1cffe1f7299713288",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "studybible-info",
       "file": "studybible-info.png",
       "type": "png",
-      "bytes": 5942
+      "bytes": 5942,
+      "sha256": "20888d8fea769d83df280f8c2cc411510e225eae3266c7eb11244472c66680ef",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "studylight",
       "file": "studylight.png",
       "type": "png",
-      "bytes": 3130
+      "bytes": 3130,
+      "sha256": "956225c6f92508400ccca3b04734ecf496271a644c583389907a9e51e41200b6",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "t3-chat",
       "file": "t3-chat.png",
       "type": "png",
-      "bytes": 5328
+      "bytes": 5328,
+      "sha256": "5d1a22a77b2e6d8475db0e8c9324929d1530d5e7a2dfdf8a33472ab055037904",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "telegram",
       "file": "telegram.png",
       "type": "png",
-      "bytes": 6411
+      "bytes": 6411,
+      "sha256": "47ab7ebe0ff730a9ab5fbb820a004d40cf6b16b341a4fe7eded69224b79a64b6",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "tgc-commentary",
       "file": "tgc-commentary.png",
       "type": "png",
-      "bytes": 2022
+      "bytes": 2022,
+      "sha256": "6ba4fb3454a0f48cc7bad0180cc86e758713eb487808b991886ff9197773834a",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "things-3",
       "file": "things-3.png",
       "type": "png",
-      "bytes": 6204
+      "bytes": 6204,
+      "sha256": "3c566f8a0c0640c199e2c1b597efcf73f756556ba5553a1e46ec607ce8e88d9c",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "todoist",
       "file": "todoist.png",
       "type": "png",
-      "bytes": 5422
+      "bytes": 5422,
+      "sha256": "9c923965ca4463e6f63ed01f5547283fae95dd8ced40ef295a24a55a14a8e5e6",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "type-the-word",
       "file": "type-the-word.png",
       "type": "png",
-      "bytes": 3106
+      "bytes": 3106,
+      "sha256": "303106b58d2dbe214673111bd8f2bdab0552af0bccc4d77e83839c67f862f63f",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "wedevote",
       "file": "wedevote.png",
       "type": "png",
-      "bytes": 4777
+      "bytes": 4777,
+      "sha256": "fdae532e75cec0ae6f64b2ee901367ff8603920e294a98e956b6b25b7ee6f1b1",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "whatsapp",
       "file": "whatsapp.png",
       "type": "png",
-      "bytes": 7717
+      "bytes": 7717,
+      "sha256": "fd07a5c8cc6874dac56cbcfdb6b0f0926a6b3fe8b23704946b3784e32fa228a6",
+      "width": 64,
+      "height": 64
     },
     {
       "id": "x",
       "file": "x.png",
       "type": "png",
-      "bytes": 2001
+      "bytes": 2001,
+      "sha256": "ea7a8af4c65714ae7de01c446474048e2979efe33c14a047d4333dabd5ea1010",
+      "width": 64,
+      "height": 64
     }
   ]
 }

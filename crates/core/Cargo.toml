@@ -45,9 +45,6 @@ js-sys = "0.3"
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
 keyring = "4"
 
-[build-dependencies]
-serde_json.workspace = true
-
 [dev-dependencies]
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 
