@@ -16,6 +16,7 @@ pub mod model;
 pub mod online;
 pub mod open_in;
 pub mod open_in_context;
+pub mod open_in_exclude;
 pub mod open_in_icons;
 pub mod open_in_tables;
 pub mod open_in_translations;

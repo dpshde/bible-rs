@@ -7,6 +7,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "../src/open_in_exclude.rs"]
+mod exclude;
+use exclude::NOT_IN_BIBLE_RS;
+
+fn excluded(id: &str) -> bool {
+    NOT_IN_BIBLE_RS.contains(&id)
+}
+
 #[derive(Debug)]
 pub struct FeedError(pub String);
 impl std::fmt::Display for FeedError {
@@ -52,7 +60,11 @@ pub fn refresh(
             .ok_or_else(|| FeedError("manifest.adapters must be an array".into()))?;
         // One adapter per line keeps the vendored copy small and its diffs readable.
         let generated = manifest.get("generatedAt").cloned().unwrap_or_default();
-        let lines: Vec<String> = adapters.iter().map(|a| format!("  {a}")).collect();
+        let lines: Vec<String> = adapters
+            .iter()
+            .filter(|a| !a.get("id").and_then(|v| v.as_str()).is_some_and(excluded))
+            .map(|a| format!("  {a}"))
+            .collect();
         let body = format!(
             "{{\"version\": {}, \"generatedAt\": {generated}, \"adapters\": [\n{}\n]}}\n",
             serde_json::Value::from(version.as_str()),
@@ -69,8 +81,9 @@ pub fn refresh(
         .and_then(|v| v.as_object())
         .ok_or_else(|| FeedError("manifest.icons must be an object".into()))?;
 
+    let icons: Vec<_> = icons.iter().filter(|(id, _)| !excluded(id)).collect();
     let mut icon_records = Vec::new();
-    for (id, meta) in icons {
+    for &(id, meta) in &icons {
         let path = meta
             .get("path")
             .and_then(|v| v.as_str())
@@ -117,7 +130,7 @@ pub fn refresh(
     // Everything verified: only now replace the staged snapshot.
     let _ = fs::remove_dir_all(icons_out);
     fs::create_dir_all(icons_out).map_err(|e| FeedError(e.to_string()))?;
-    for id in icons.keys() {
+    for (id, _) in &icons {
         fs::copy(icons_cache.join(format!("{id}.png")), icons_out.join(format!("{id}.png")))
             .map_err(|e| FeedError(e.to_string()))?;
     }

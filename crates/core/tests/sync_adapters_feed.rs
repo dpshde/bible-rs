@@ -1,5 +1,5 @@
 //! The route.bible feed ingest (`build/feed.rs`, used by `build.rs` and `scripts/sync-adapters`)
-//! against a tiny synthetic feed built here from two vendored icons: sha256 checks, the manifest
+//! against a tiny synthetic feed built here from vendored icons: sha256 checks, the manifest
 //! fields it tolerates, and failures that make the build keep the vendored snapshot.
 
 #![allow(dead_code)]
@@ -16,14 +16,15 @@ fn icon(id: &str) -> Vec<u8> {
     fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("data/adapter-icons/{id}.png"))).unwrap()
 }
 
-/// A two-adapter feed in a fresh directory, shaped like route.bible's live `adapters/v1`.
+/// A three-adapter feed in a fresh directory, shaped like route.bible's live `adapters/v1`.
 fn synthetic_feed(name: &str, tamper: impl Fn(&mut serde_json::Value)) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("icons")).unwrap();
     let mut icons = serde_json::Map::new();
-    for (id, fit) in [("bible-app", "cover"), ("bible-is", "contain")] {
-        let png = icon(id);
+    // simplymybible (bible-rs itself) must be dropped; it reuses another icon's bytes here.
+    for (id, fit) in [("bible-app", "cover"), ("bible-is", "contain"), ("simplymybible", "cover")] {
+        let png = icon(if id == "simplymybible" { "bible-app" } else { id });
         fs::write(dir.join(format!("icons/{id}.png")), &png).unwrap();
         icons.insert(
             id.into(),
@@ -39,13 +40,14 @@ fn synthetic_feed(name: &str, tamper: impl Fn(&mut serde_json::Value)) -> PathBu
         "schemaVersion": 1,
         "version": VERSION,
         "generatedAt": "2026-01-01T00:00:00.000Z",
-        "adapterCount": 2,
+        "adapterCount": 3,
         // Newer feeds document their template variables; ingest ignores them.
         "templateVariableNames": ["passage", "verseText"],
         "templateVariableNotes": { "verseText": { "maxLength": 500, "fallback": "displayPassage" } },
         "adapters": [
             { "id": "bible-app", "name": "YouVersion", "links": link("https://www.bible.com/bible/{{youversionVersionId}}/{{passage}}") },
             { "id": "bible-is", "name": "Bible.is", "links": link("https://live.bible.is/bible/{{bibleIsPath}}") },
+            { "id": "simplymybible", "name": "Simply My Bible", "links": link("https://simplymybible.com/{{simplyMyBiblePath}}") },
         ],
         "icons": icons,
     });
@@ -78,6 +80,10 @@ fn ingests_a_feed_and_keeps_display_hints() {
     )
     .unwrap();
     assert_eq!(meta["icons"][1], serde_json::json!({ "id": "bible-is", "fit": "contain" }));
+    // Adapters bible-rs never offers are not vendored at all.
+    assert_eq!(meta["icons"].as_array().unwrap().len(), 2);
+    assert!(links["adapters"].as_array().unwrap().iter().all(|a| a["id"] != "simplymybible"));
+    assert!(!out.join("icons/simplymybible.png").exists());
 }
 
 #[test]
@@ -93,7 +99,7 @@ fn rejects_an_icon_whose_sha256_does_not_match() {
 
 #[test]
 fn rejects_inconsistent_or_missing_feeds() {
-    let (r, _) = ingest(&synthetic_feed("feed-bad-count", |m| m["adapterCount"] = 3.into()));
+    let (r, _) = ingest(&synthetic_feed("feed-bad-count", |m| m["adapterCount"] = 4.into()));
     assert!(r.unwrap_err().0.contains("adapterCount"));
     let (r, _) = ingest(&synthetic_feed("feed-bad-version", |m| m["version"] = "other".into()));
     assert!(r.unwrap_err().0.contains("latest.txt"));

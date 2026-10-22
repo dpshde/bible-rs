@@ -17,8 +17,9 @@ use crate::open_in_context;
 
 const API_BASE: &str = "https://route.bible";
 
-/// Adapters left out of Open in › here: Simply My Bible is bible-rs itself.
-pub const NOT_IN_BIBLE_RS: &[&str] = &["simplymybible"];
+/// Adapters left out of Open in › (also skipped when the feed is vendored; kept here in case a
+/// refreshed feed still carries them).
+pub use crate::open_in_exclude::NOT_IN_BIBLE_RS;
 
 /// route.bible catalogType order and human labels (from their launcher UI).
 const CATALOG_TYPES: &[(&str, &str)] =
@@ -419,7 +420,6 @@ mod tests {
     #[test]
     fn simply_my_bible_is_not_offered() {
         let catalog = Catalog::bundled();
-        assert!(catalog.items.iter().any(|a| a.id == "simplymybible"), "still in the vendored data");
         assert!(catalog.menu_items().iter().all(|a| a.id != "simplymybible"));
         assert!(catalog.starred(&["simplymybible".to_string()]).is_empty());
     }
