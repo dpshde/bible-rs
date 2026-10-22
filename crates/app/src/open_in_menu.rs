@@ -19,6 +19,13 @@ const WIDTH: f32 = 240.0;
 const VISIBLE: usize = 12;
 /// Cap a single frame's wheel/trackpad step so a notch can't leap the whole list.
 const MAX_SCROLL_STEP: f32 = ITEM_HEIGHT * 3.0;
+/// Muted attribution under the list; clicking it opens route.bible.
+pub const FOOTER_LABEL: &str = "Supplied by route.bible";
+pub const FOOTER_URL: &str = "https://route.bible";
+
+fn footer_height() -> f32 {
+    tokens::HEADER_HEIGHT
+}
 
 /// Header label + 1px rule under it (house rule: no other dividers).
 fn header_block_height() -> f32 {
@@ -203,7 +210,7 @@ impl OpenInMenu {
 
         let list_h = if rows.is_empty() { ITEM_HEIGHT } else { view_h };
         let filter_h = if self.filter.is_empty() { 0.0 } else { tokens::HEADER_HEIGHT };
-        let height = PADDING_Y + filter_h + list_h + PADDING_Y;
+        let height = PADDING_Y + filter_h + list_h + footer_height() + PADDING_Y;
         let screen = ctx.content_rect();
         let pos = pos2(
             self.pos.x.min(screen.right() - WIDTH - 8.0).max(screen.left() + 8.0),
@@ -246,6 +253,17 @@ impl OpenInMenu {
                     }
                 }
                 let (left, right) = (rect.left() + PADDING_X, rect.right() - PADDING_X);
+                let footer_top = rect.bottom() - PADDING_Y - footer_height();
+                let footer = Rect::from_x_y_ranges(left..=right, footer_top..=footer_top + footer_height());
+                let footer_hit = ui.interact(footer, ui.id().with("open-in-footer"), Sense::click());
+                paint_footer(ui.painter(), p, footer, footer_hit.hovered());
+                if footer_hit.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if footer_hit.clicked() {
+                    crate::app::open_url(FOOTER_URL);
+                    close = true;
+                }
                 let mut y = rect.top() + PADDING_Y;
                 if !self.filter.is_empty() {
                     let header = Rect::from_x_y_ranges(left..=right, y..=y + tokens::HEADER_HEIGHT);
@@ -336,6 +354,17 @@ fn paint_section_header(painter: &egui::Painter, p: &Palette, r: Rect, label: &s
     );
 }
 
+/// Small muted attribution line; slightly stronger ink on hover.
+fn paint_footer(painter: &egui::Painter, p: &Palette, r: Rect, hovered: bool) {
+    painter.text(
+        pos2(r.left() + tokens::ITEM_PADDING, r.center().y),
+        Align2::LEFT_CENTER,
+        FOOTER_LABEL,
+        text::CAPTION.font(),
+        if hovered { p.ink_2 } else { p.ink_3 },
+    );
+}
+
 fn paint_adapter_row(
     painter: &egui::Painter,
     p: &Palette,
@@ -380,4 +409,16 @@ pub fn parent_label() -> &'static str {
 
 pub fn passage_from_selection(refs: &[bible_core::VerseRef]) -> Option<Passage> {
     Passage::from_refs(refs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn footer_credits_route_bible() {
+        assert_eq!(FOOTER_LABEL, "Supplied by route.bible");
+        assert_eq!(FOOTER_URL, "https://route.bible");
+        assert!(footer_height() > 0.0);
+    }
 }
