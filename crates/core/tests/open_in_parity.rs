@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use bible_core::VerseRef;
 use bible_core::books::{BOOKS, BookId};
 use bible_core::open_in::{Catalog, Passage, open_url_for};
-use bible_core::open_in_context::normalize_translation;
+use bible_core::open_in_context::{normalize_translation, verse_query_text};
 use bible_core::open_in_tables::BOOK_VARIANTS;
 use bible_core::open_in_translations::TRANSLATION_SUPPORT;
 use serde_json::Value;
@@ -139,4 +139,33 @@ fn unsupported_translation_opens_the_site_default() {
         open_url_for(jonah, "bible-gateway", "WEB", ""),
         "https://www.biblegateway.com/passage/?search=Jonah%202%3A3&version=WEB"
     );
+}
+
+fn fixture() -> Value {
+    serde_json::from_str(include_str!("fixtures/route-bible-parity.json")).unwrap()
+}
+
+#[test]
+fn verse_text_cleanup_matches_route_bible() {
+    let v = fixture();
+    let cases = v["verseText"].as_array().expect("verseText cases");
+    assert!(cases.len() >= 5);
+    for c in cases {
+        let lines: Vec<&str> = c["input"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
+        assert_eq!(verse_query_text(&lines.join("\n")), c["output"].as_str().unwrap(), "{lines:?}");
+    }
+}
+
+#[test]
+fn hidden_arrow_searches_the_local_verse_text() {
+    let v = fixture();
+    let ha = &v["hiddenArrow"];
+    let john = passage("JHN.3.16");
+    let text = ha["text"].as_str().unwrap();
+    let url = open_url_for(john, "hidden-arrow", "KJV", text);
+    assert_eq!(url, ha["url"].as_str().unwrap());
+    assert!(url.starts_with("https://hiddenarrow.app/?q=For%20God%20so%20loved%20the%20world%2C"));
+    // No local text: the reference, as route.bible does.
+    assert_eq!(open_url_for(john, "hidden-arrow", "KJV", ""), ha["fallback"].as_str().unwrap());
+    assert_eq!(ha["fallback"].as_str().unwrap(), "https://hiddenarrow.app/?q=John%203%3A16");
 }

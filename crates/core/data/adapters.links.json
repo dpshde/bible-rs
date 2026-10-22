@@ -743,41 +743,6 @@
       "catalogType": "route",
       "confidence": "official",
       "firstParty": true,
-      "id": "kindled",
-      "keywords": [
-        "kindled",
-        "selah",
-        "capture",
-        "reflection",
-        "memorization",
-        "spaced repetition"
-      ],
-      "lastVerifiedAt": "2026-04-20T00:00:00.000Z",
-      "links": [
-        {
-          "kind": "web",
-          "platforms": [
-            "web"
-          ],
-          "template": "https://kindled.selah.tools/?ref={{displayPassage}}"
-        }
-      ],
-      "name": "Kindled",
-      "status": "active",
-      "subtitle": "Scripture companion",
-      "supportedRangeTypes": [
-        "single",
-        "chapter",
-        "same_chapter",
-        "chapter_range",
-        "cross_reference"
-      ]
-    },
-    {
-      "catalogSubtype": "note",
-      "catalogType": "route",
-      "confidence": "official",
-      "firstParty": true,
       "id": "margin-bible",
       "keywords": [
         "margin",
@@ -1894,6 +1859,41 @@
       ]
     },
     {
+      "catalogSubtype": "ask",
+      "catalogType": "explore",
+      "confidence": "official",
+      "id": "hidden-arrow",
+      "keywords": [
+        "hidden arrow",
+        "hiddenarrow",
+        "hiddenarrow.app",
+        "semantic search",
+        "topical search",
+        "similar verses",
+        "search"
+      ],
+      "lastVerifiedAt": "2026-10-22T00:00:00.000Z",
+      "links": [
+        {
+          "kind": "web",
+          "platforms": [
+            "web"
+          ],
+          "template": "https://hiddenarrow.app/?q={{verseText}}"
+        }
+      ],
+      "name": "Hidden Arrow",
+      "status": "active",
+      "subtitle": "Semantic search",
+      "supportedRangeTypes": [
+        "single",
+        "chapter",
+        "same_chapter",
+        "chapter_range",
+        "cross_reference"
+      ]
+    },
+    {
       "catalogSubtype": "audio",
       "catalogType": "read",
       "confidence": "official",
@@ -2080,6 +2080,6 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-22T17:35:12.170Z",
-  "version": "2026.10.22-8576059"
+  "generatedAt": "2026-10-22T17:51:20.210Z",
+  "version": "2026.10.22-9f64272"
 }

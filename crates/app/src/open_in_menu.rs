@@ -589,8 +589,9 @@ mod tests {
         assert!(color_luminance(tile) < 0.3);
         assert!(backing_tile(&bible_is, SEPIA).is_some());
         assert_eq!(backing_tile(&bible_is, DARK), None);
-        // Kindled is a near-black tile: light backing on dark, none on light.
-        let kindled = stats("kindled");
+        // A near-black tile (as Kindled's was): light backing on dark, none on light.
+        let kindled =
+            IconStats::of(&image::RgbaImage::from_pixel(64, 64, image::Rgba([0x2A, 0x1F, 0x10, 0xFF])));
         let tile = backing_tile(&kindled, DARK).expect("dark tile on dark needs a backing");
         assert!(color_luminance(tile) > 0.7);
         assert_eq!(backing_tile(&kindled, LIGHT), None);

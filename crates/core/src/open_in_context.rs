@@ -352,6 +352,84 @@ pub fn action_body_with_text(verse_text: &str, display: &str, translation: &str)
     }
 }
 
+/// Max characters of passage text placed in `{{verseText}}` (route.bible `VERSE_TEXT_MAX_LENGTH`).
+pub const VERSE_TEXT_MAX_LENGTH: usize = 500;
+
+/// Strips a leading verse number from one line: `16 `, `16. `, `16) `, `3:16 `, `v16 `, `v. 16 `
+/// (only when text follows), as route.bible's `buildVerseQueryText` does.
+fn strip_leading_verse_number(line: &str) -> &str {
+    let t = line.trim_start();
+    let mut rest = t;
+    if let Some(r) = rest.strip_prefix(['v', 'V']) {
+        let r = r.strip_prefix('.').unwrap_or(r);
+        rest = r.trim_start();
+    }
+    let digits = |s: &str| s.bytes().take_while(u8::is_ascii_digit).count();
+    let n = digits(rest);
+    if !(1..=3).contains(&n) {
+        return line;
+    }
+    rest = &rest[n..];
+    if let Some(r) = rest.strip_prefix(':') {
+        let m = digits(r);
+        if (1..=3).contains(&m) {
+            rest = &r[m..];
+        }
+    }
+    rest = rest.strip_prefix(['.', ')']).unwrap_or(rest);
+    let after = rest.trim_start();
+    if after.len() == rest.len() || after.is_empty() || after.starts_with(|c: char| c.is_ascii_digit()) {
+        return line;
+    }
+    after
+}
+
+/// Replaces bracketed verse numbers (`[16]`, `[ 16 ]`) with a space.
+fn drop_bracketed_numbers(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(i) = rest.find('[') {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i + 1..];
+        let inner = tail.trim_start();
+        let n = inner.bytes().take_while(u8::is_ascii_digit).count();
+        let after = inner[n..].trim_start();
+        if (1..=3).contains(&n) && after.starts_with(']') {
+            out.push(' ');
+            rest = &after[1..];
+        } else {
+            out.push('[');
+            rest = tail;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Plain passage text for search adapters (`{{verseText}}`), matching route.bible's
+/// `buildVerseQueryText`: verse numbers and footnote marks stripped, whitespace collapsed, capped
+/// at [`VERSE_TEXT_MAX_LENGTH`] on a word boundary. Not encoded.
+pub fn verse_query_text(text: &str) -> String {
+    let cleaned = text
+        .lines()
+        .map(|line| {
+            let line = drop_bracketed_numbers(line);
+            strip_leading_verse_number(&line).replace(['¶', '*', '†', '‡'], " ")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let max = VERSE_TEXT_MAX_LENGTH;
+    if cleaned.chars().count() <= max {
+        return cleaned;
+    }
+    let slice: String = cleaned.chars().take(max).collect();
+    match slice.rfind(' ') {
+        Some(i) if slice[..i].chars().count() as f32 > max as f32 * 0.6 => slice[..i].trim().to_string(),
+        _ => slice.trim().to_string(),
+    }
+}
+
 /// Percent-encoded raw verse text for translate URL `text=` params.
 pub fn encoded_raw_text(verse_text: &str) -> String {
     encode_uri_component(&truncate_for_url(verse_text.trim()))
@@ -472,6 +550,9 @@ pub fn template_replacements_for(
     m.insert("shareText", encode_uri_component(&format!("{display} {route_url}")));
     m.insert("actionTitle", encode_uri_component(&action_title));
     m.insert("actionBody", encode_uri_component(&action_body));
+    // Search adapters (Hidden Arrow): the local text, else the reference.
+    let query = verse_query_text(verse_text);
+    m.insert("verseText", encode_uri_component(if query.is_empty() { &display } else { &query }));
     // Raw verse text only (for callers); translate expansion overrides actionBody with it.
     m.insert("passageText", encode_uri_component(&text_for_url));
     m.insert("aiPromptBody", encode_uri_component(&build_ai_prompt_body(&display, t, ai_utm_source)));

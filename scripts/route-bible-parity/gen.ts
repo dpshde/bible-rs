@@ -7,7 +7,7 @@ import { writeFileSync, readFileSync } from "node:fs";
 import { OSIS_BOOK_CODES, OSIS_BOOK_NAMES } from "rb/packages/grab-bcv/src/index";
 import { parsePassage } from "rb/packages/grab-bcv/src/parser";
 import { getServiceBookVariant, getBibleProjectGuideSlug } from "rb/packages/route-bible-adapters/src/book-variants";
-import { buildAdapterTemplateContext } from "rb/packages/route-bible-adapters/src/context";
+import { buildAdapterTemplateContext, buildVerseQueryText } from "rb/packages/route-bible-adapters/src/context";
 import { buildAdapterTemplateReplacements, renderAdapterTemplate } from "rb/packages/route-bible-adapters/src/registry";
 
 const out = process.env.BIBLE_RS_DIR!;
@@ -117,8 +117,35 @@ const push = (input: string, translation: string) => {
 for (const input of tricky) for (const t of ["BSB", "ESV", "KJV", "WEB"]) push(input, t);
 for (const t of ["ASV", "YLT", "DBY", "WBS", "NKJV", "NIV", "NLT", "CSB", "HCSB", "NASB", "NASB95", "NASB1995", "NRSV", "NRSV-CI", "NRSVUE", "NET", "WEBUS", "LEB", "LSB", "DARBY"]) push("John 3:16", t);
 for (const code of OSIS_BOOK_CODES) push(`${OSIS_BOOK_NAMES[code]} 1:1`, "BSB");
+// {{verseText}}: route.bible's own cleanup of local text (lines are verses).
+const JOHN_3_16_KJV =
+  "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
+const longText = Array.from({ length: 400 }, (_, i) => `word${i}`).join(" ");
+const verseTextInputs: string[][] = [
+  [JOHN_3_16_KJV],
+  ["16 " + JOHN_3_16_KJV],
+  ["12 I know how to live humbly,", "[13] I can do all things through Christ who gives me strength."],
+  ["v. 4 Rejoice in the Lord always. ¶ Again I say, rejoice!", "3:5 Let your gentleness be known*"],
+  ["  spaced   out\ttext  ", "1000 men", "7) Seven"],
+  ["   "],
+  [longText],
+];
+const verseText = verseTextInputs.map((input) => ({ input, output: buildVerseQueryText(input) }));
+const ha = links.adapters.find((a: any) => a.id === "hidden-arrow");
+const hiddenArrow = ha
+  ? (() => {
+      const p = parsePassage("John 3:16");
+      const template = webTemplates["hidden-arrow"];
+      return {
+        input: "John 3:16",
+        text: JOHN_3_16_KJV,
+        url: renderAdapterTemplate(template, buildAdapterTemplateContext(p, "KJV", "hidden-arrow", p, { verseText: [JOHN_3_16_KJV] })),
+        fallback: renderAdapterTemplate(template, buildAdapterTemplateContext(p, "KJV", "hidden-arrow")),
+      };
+    })()
+  : null;
 writeFileSync(
   `${out}/crates/core/tests/fixtures/route-bible-parity.json`,
-  JSON.stringify({ source: `route.bible adapters ${links.version}`, cases }, null, 1) + "\n",
+  JSON.stringify({ source: `route.bible adapters ${links.version}`, cases, verseText, hiddenArrow }, null, 1) + "\n",
 );
 console.log(`route-bible-parity: ${rows.length} books, ${cases.length} cases`);

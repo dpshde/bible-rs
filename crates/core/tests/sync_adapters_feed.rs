@@ -38,6 +38,13 @@ fn fixture_manifest_matches_schema_v1() {
         .or_else(|| manifest["adapters"]["adapters"].as_array())
         .expect("adapters array");
     assert_eq!(manifest["adapterCount"].as_u64().unwrap() as usize, adapters.len());
+    // Newer feeds document template variables; ingest ignores fields it doesn't use.
+    assert!(
+        manifest["templateVariableNames"]
+            .as_array()
+            .is_some_and(|names| names.iter().any(|n| n == "verseText"))
+    );
+    assert_eq!(manifest["templateVariableNotes"]["verseText"]["maxLength"], 500);
     let icons = manifest["icons"].as_object().expect("icons object");
     assert!(!icons.is_empty());
     for (id, meta) in icons {

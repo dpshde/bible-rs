@@ -284,6 +284,16 @@
       "width": 64
     },
     {
+      "bytes": 2220,
+      "file": "hidden-arrow.png",
+      "fit": "cover",
+      "height": 64,
+      "id": "hidden-arrow",
+      "sha256": "a0c1011d2ec98dbfc75ff2371f73fc7957adf440c08c1e210f5d90e566dbef06",
+      "type": "png",
+      "width": 64
+    },
+    {
       "bytes": 1275,
       "file": "inksignal.png",
       "fit": "cover",
@@ -301,17 +311,6 @@
       "id": "kagi-translate",
       "sha256": "eefe46ebe6abd67c3262d2444fa7ffe8488688214472208c5bbc8086f835ffd5",
       "theme": "invert",
-      "type": "png",
-      "width": 64
-    },
-    {
-      "background": "#2a1f10",
-      "bytes": 1426,
-      "file": "kindled.png",
-      "fit": "cover",
-      "height": 64,
-      "id": "kindled",
-      "sha256": "b389759460020792b207c24e9d1754246c6580554cb1aa6e5c05d89c8bed2a36",
       "type": "png",
       "width": 64
     },
@@ -651,6 +650,6 @@
     }
   ],
   "size": 64,
-  "source": "route.bible adapters feed (2026.10.22-8576059)",
+  "source": "route.bible adapters feed (2026.10.22-9f64272)",
   "version": 1
 }
