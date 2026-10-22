@@ -115,6 +115,28 @@ fn sun_icon(p: &Painter, r: Rect, c: Color32) {
     icons::text_size(p, r, c);
 }
 
+fn bookmark_icon(p: &Painter, r: Rect, c: Color32) {
+    icons::bookmark(p, r, c, false);
+}
+
+/// The argument after a leading `bookmark` command word (`bookmark John 3:16`), if any.
+fn bookmark_arg(query: &str) -> Option<&str> {
+    let q = query.trim();
+    let lower: String = q.chars().flat_map(char::to_lowercase).collect();
+    if lower == "bookmark" || lower.starts_with("bookmark ") {
+        Some(q["bookmark".len()..].trim_start())
+    } else {
+        None
+    }
+}
+
+/// Verses a reference names for bookmarking: a single verse, or every verse in a same-chapter range.
+pub(crate) fn bookmark_verses(r: reference::Reference) -> Option<Vec<bible_core::VerseRef>> {
+    let start = r.verse?;
+    let end = r.verse_end.filter(|&e| e > start).unwrap_or(start);
+    Some((start..=end).map(|v| bible_core::VerseRef::new(r.book, r.chapter, v)).collect())
+}
+
 /// Which characters of `title` match `query`: the query's letters in order through the book name
 /// (fuzzy, as "jn" in John), and the numbers after it when the query has any.
 fn matches(title: &str, query: &str) -> Vec<bool> {
@@ -163,7 +185,30 @@ impl CommandPalette {
         };
         let translation = library.load(&settings.translation).ok();
         let mut first_ref = None;
-        if !q.is_empty() {
+        // `bookmark <ref>`: save the verse (or every verse in a same-chapter range).
+        if let Some(arg) = bookmark_arg(q) {
+            if arg.is_empty() {
+                items.push(command(
+                    bookmark_icon,
+                    "Bookmark a verse…".into(),
+                    vec![],
+                    Action::Toast("Type a reference, e.g. bookmark John 3:16".into()),
+                ));
+            } else if let Some(r) = reference::parse(arg).filter(|r| match (&translation, r.verse) {
+                (Some(t), Some(_)) => t.find(r.verse_ref()).is_some(),
+                _ => r.verse.is_some(),
+            }) && let Some(refs) = bookmark_verses(r)
+            {
+                items.push(command(
+                    bookmark_icon,
+                    format!("Bookmark {}", r.display()),
+                    vec![],
+                    Action::BookmarkVerses(refs),
+                ));
+            }
+        }
+
+        if !q.is_empty() && bookmark_arg(q).is_none() {
             // Only references that exist in the translation being read (Jonah has no 3:16).
             let refs: Vec<_> = reference::suggest(q, 8)
                 .into_iter()
@@ -299,6 +344,14 @@ impl CommandPalette {
                         vec!["C"],
                         Action::CompareVerse(r.verse_ref()),
                     ));
+                    if let Some(refs) = bookmark_verses(r) {
+                        items.push(command(
+                            bookmark_icon,
+                            format!("Bookmark {}", r.display()),
+                            vec![],
+                            Action::BookmarkVerses(refs),
+                        ));
+                    }
                 }
                 let title = format!("Open {} {} in parallel", name(r.book), r.chapter);
                 let jump =
@@ -312,6 +365,17 @@ impl CommandPalette {
             }
         }
         let ql = q.to_lowercase();
+        // Offer the Bookmark command while its name is being typed (before a reference).
+        if bookmark_arg(q).is_none()
+            && (q.is_empty() || "bookmark".starts_with(&ql) || "bookmark a verse".contains(&ql))
+        {
+            items.push(command(
+                bookmark_icon,
+                "Bookmark a verse…".into(),
+                vec![],
+                Action::Toast("Type bookmark and a reference, e.g. bookmark John 3:16".into()),
+            ));
+        }
         for (title, icon, keys, action) in command_list(settings) {
             if q.is_empty() || title.to_lowercase().contains(&ql) {
                 items.push(command(icon, title.to_string(), keys, action));
@@ -640,7 +704,8 @@ fn title_job(painter: &Painter, p: &Palette, it: &Item, width: f32) -> std::sync
 
 #[cfg(test)]
 mod tests {
-    use super::matches;
+    use super::*;
+    use bible_core::books::BookId;
 
     #[test]
     fn fuzzy_titles() {
@@ -651,5 +716,33 @@ mod tests {
         assert_eq!(m("1 John 3:16", "jn 3:16"), "..J..n 3:16");
         assert_eq!(m("Joshua 3:16", "jn 3:16"), "J..... 3:16");
         assert_eq!(m("John 3", "jn 3:16"), "J..n 3");
+    }
+
+    #[test]
+    fn bookmark_arg_strips_the_command_word() {
+        assert_eq!(bookmark_arg("bookmark"), Some(""));
+        assert_eq!(bookmark_arg("Bookmark "), Some(""));
+        assert_eq!(bookmark_arg("bookmark John 3:16"), Some("John 3:16"));
+        assert_eq!(bookmark_arg("BOOKMARK phil 4:11-13"), Some("phil 4:11-13"));
+        assert_eq!(bookmark_arg("book"), None);
+        assert_eq!(bookmark_arg("john 3:16"), None);
+        assert_eq!(bookmark_arg(""), None);
+    }
+
+    #[test]
+    fn bookmark_verses_cover_a_range() {
+        let r = reference::parse("Phil 4:11-13").unwrap();
+        let refs = bookmark_verses(r).unwrap();
+        assert_eq!(
+            refs,
+            vec![
+                bible_core::VerseRef::new(BookId(49), 4, 11),
+                bible_core::VerseRef::new(BookId(49), 4, 12),
+                bible_core::VerseRef::new(BookId(49), 4, 13),
+            ]
+        );
+        let one = reference::parse("jn 3:16").unwrap();
+        assert_eq!(bookmark_verses(one).unwrap(), vec![bible_core::VerseRef::new(BookId(42), 3, 16)]);
+        assert!(bookmark_verses(reference::parse("Rom 8").unwrap()).is_none());
     }
 }

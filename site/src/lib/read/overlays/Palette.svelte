@@ -5,7 +5,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { getApp, now, type Action } from '../app.svelte';
-	import { suggestReferences, type Reference } from '../core';
+	import { parseReference, suggestReferences, type Reference, type VerseRef } from '../core';
 	import { SHORTCUTS, isMac, keycaps, rowCaps } from '../keyboard';
 	import { ago } from '../time';
 	import { Icon, Keycap, type IconName } from '../ui';
@@ -77,6 +77,23 @@
 		action
 	});
 
+	/** The argument after a leading `bookmark` command word (`bookmark John 3:16`), if any. */
+	function bookmarkArg(q: string): string | null {
+		const t = q.trim();
+		const lower = t.toLowerCase();
+		if (lower === 'bookmark' || lower.startsWith('bookmark ')) return t.slice('bookmark'.length).trimStart();
+		return null;
+	}
+
+	/** Verses a reference names for bookmarking: a single verse, or every verse in a same-chapter range. */
+	function bookmarkVerses(r: Reference): VerseRef[] | null {
+		if (r.verse == null) return null;
+		const end = r.verseEnd && r.verseEnd > r.verse ? r.verseEnd : r.verse;
+		const out: VerseRef[] = [];
+		for (let v = r.verse; v <= end; v++) out.push({ book: r.book, chapter: r.chapter, verse: v });
+		return out;
+	}
+
 	const items = $derived.by((): Item[] => {
 		const core = app.core;
 		if (!core) return [];
@@ -99,7 +116,23 @@
 		const out: Item[] = [];
 		let first: Reference | undefined;
 
-		if (q) {
+		const bmArg = bookmarkArg(q);
+		if (bmArg !== null) {
+			if (!bmArg) {
+				out.push(
+					command('bookmark', 'Bookmark a verse…', [], {
+						type: 'toast',
+						text: 'Type a reference, e.g. bookmark John 3:16'
+					})
+				);
+			} else {
+				const r = parseReference(bmArg);
+				const refs = r && (!loaded || (r.verse ? verseText(r) !== null : false)) ? bookmarkVerses(r) : null;
+				if (refs) out.push(command('bookmark', `Bookmark ${r!.label}`, [], { type: 'bookmarkVerses', verses: refs }));
+			}
+		}
+
+		if (q && bmArg === null) {
 			// Only references that exist in the translation being read (Jonah has no 3:16).
 			const refs = suggestReferences(q, 8).filter(
 				(r) => !loaded || (r.verse ? verseText(r) !== null : !!app.verses(id, r.chapterIndex)?.length)
@@ -194,6 +227,8 @@
 							verse
 						})
 					);
+					const refs = bookmarkVerses(first);
+					if (refs) out.push(command('bookmark', `Bookmark ${first.label}`, [], { type: 'bookmarkVerses', verses: refs }));
 				}
 				const jump: Action = {
 					type: 'jump',
@@ -211,6 +246,14 @@
 		}
 
 		const ql = q.toLowerCase();
+		if (bmArg === null && (!q || 'bookmark'.startsWith(ql) || 'bookmark a verse'.includes(ql))) {
+			out.push(
+				command('bookmark', 'Bookmark a verse…', [], {
+					type: 'toast',
+					text: 'Type bookmark and a reference, e.g. bookmark John 3:16'
+				})
+			);
+		}
 		const commands: [string, IconName, string[], Action][] = [
 			['Toggle parallel translations', 'columns', bound('parallel'), { type: 'toggleParallel' }],
 			['Theme: Light', 'text-size', [], { type: 'setTheme', theme: 'light' }],

@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # The page fetches the `.bbl` files itself, so nothing is embedded and nothing native comes along.
-bible-core = { workspace = true, default-features = false }
+bible-core = { workspace = true }
 anyhow.workspace = true
 serde.workspace = true
 serde-wasm-bindgen = "0.6"
