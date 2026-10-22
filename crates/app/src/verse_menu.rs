@@ -37,17 +37,55 @@ pub struct VerseMenu {
     highlighted: Option<usize>,
     opened: bool,
     open_in: Option<OpenInMenu>,
+    /// How far the rows are scrolled when the menu is taller than the window (many stars).
+    scroll_y: f32,
+}
+
+/// Above the rows: padding, the "Highlight" header, the swatches and their separator.
+const ROWS_TOP: f32 = PADDING_Y + tokens::HEADER_HEIGHT + SWATCHES_HEIGHT + SEPARATOR_HEIGHT;
+
+fn line_height(l: &Line) -> f32 {
+    if matches!(l, Line::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT }
+}
+
+/// The menu's top-left and visible height: it keeps 8 pt from the window's edges and, when its
+/// `content` is taller than that, shows what fits and scrolls.
+fn frame(at: Pos2, content: f32, screen: Rect) -> (Pos2, f32) {
+    let height = content.min(screen.height() - 16.0).max(0.0);
+    let pos = pos2(
+        at.x.min(screen.right() - WIDTH - 8.0).max(screen.left() + 8.0),
+        at.y.min(screen.bottom() - height - 8.0).max(screen.top() + 8.0),
+    );
+    (pos, height)
+}
+
+/// `scroll` moved just enough to show the row from `top` to `bottom` (content coordinates) in a
+/// `view` tall menu, kept within `0..=content - view`.
+fn scroll_to_show(scroll: f32, top: f32, bottom: f32, view: f32, content: f32) -> f32 {
+    let s = if top < scroll + ROWS_TOP {
+        top - ROWS_TOP
+    } else if bottom > scroll + view - PADDING_Y {
+        bottom - view + PADDING_Y
+    } else {
+        scroll
+    };
+    s.clamp(0.0, (content - view).max(0.0))
 }
 
 impl VerseMenu {
     pub fn new(pos: Pos2) -> Self {
-        Self { pos, highlighted: None, opened: false, open_in: None }
+        Self { pos, highlighted: None, opened: false, open_in: None, scroll_y: 0.0 }
     }
 
     /// Starts with the first item highlighted, as when opened from the keyboard.
     pub fn with_first_highlighted(mut self) -> Self {
         self.highlighted = Some(0);
         self
+    }
+
+    /// Whether the Open in › flyout is open: it then takes every single key.
+    pub fn flyout_open(&self) -> bool {
+        self.open_in.is_some()
     }
 
     fn lines(study: &StudyStore, refs: &[VerseRef], catalog: &Catalog, starred: &[String]) -> Vec<Line> {
@@ -166,20 +204,15 @@ impl VerseMenu {
             }
         }
 
-        let height = PADDING_Y
-            + tokens::HEADER_HEIGHT
-            + SWATCHES_HEIGHT
-            + SEPARATOR_HEIGHT
-            + lines
-                .iter()
-                .map(|l| if matches!(l, Line::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT })
-                .sum::<f32>()
-            + PADDING_Y;
-        let screen = ctx.content_rect();
-        let pos = pos2(
-            self.pos.x.min(screen.right() - WIDTH - 8.0).max(screen.left() + 8.0),
-            self.pos.y.min(screen.bottom() - height - 8.0).max(screen.top() + 8.0),
-        );
+        let content = ROWS_TOP + lines.iter().map(line_height).sum::<f32>() + PADDING_Y;
+        let (pos, height) = frame(self.pos, content, ctx.content_rect());
+        if (down || up)
+            && let Some(h) = self.highlighted
+        {
+            let top = ROWS_TOP + lines[..h].iter().map(line_height).sum::<f32>();
+            self.scroll_y = scroll_to_show(self.scroll_y, top, top + ITEM_HEIGHT, height, content);
+        }
+        self.scroll_y = self.scroll_y.clamp(0.0, content - height);
         let mut close = false;
         let mut open_in_row: Option<Rect> = None;
         let area = egui::Area::new(egui::Id::new("verse-menu")).order(Order::Foreground).fixed_pos(pos).show(
@@ -188,9 +221,15 @@ impl VerseMenu {
                 let rect = Rect::from_min_size(pos, vec2(WIDTH, height));
                 p.shadows.popover.paint(ui.painter(), rect, tokens::RADIUS);
                 ui.painter().rect_filled(rect, tokens::RADIUS, p.surface);
-                let (_, _) = ui.allocate_exact_size(rect.size(), Sense::hover());
+                let (_, resp) = ui.allocate_exact_size(rect.size(), Sense::hover());
+                if content > height && resp.contains_pointer() {
+                    let dy = ui.ctx().input_mut(|i| std::mem::take(&mut i.smooth_scroll_delta.y));
+                    self.scroll_y = (self.scroll_y - dy).clamp(0.0, content - height);
+                }
+                // Rows scrolled out of the menu neither paint nor take the pointer.
+                ui.set_clip_rect(rect);
                 let (left, right) = (rect.left() + PADDING_X, rect.right() - PADDING_X);
-                let mut y = rect.top() + PADDING_Y;
+                let mut y = rect.top() + PADDING_Y - self.scroll_y;
                 // "Highlight", then the swatches and clear.
                 let header = Rect::from_x_y_ranges(left..=right, y..=y + tokens::HEADER_HEIGHT);
                 menu::paint_header(ui.painter(), p, header, "Highlight");
@@ -358,4 +397,27 @@ impl VerseMenu {
 
 fn bookmark(p: &Painter, r: Rect, c: Color32) {
     icons::bookmark(p, r, c, false);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_menu_taller_than_the_window_fits_it_and_scrolls() {
+        let screen = Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 800.0));
+        // 18 stars: about 870 pt of rows in an 800 pt window.
+        let (pos, height) = frame(pos2(600.0, 400.0), 870.0, screen);
+        assert_eq!((pos.y, height), (8.0, 784.0));
+        // A short menu keeps its height and only moves up to fit.
+        assert_eq!(frame(pos2(600.0, 700.0), 338.0, screen), (pos2(600.0, 454.0), 338.0));
+        // Arrowing to the last row scrolls it into view, but never past the end.
+        assert_eq!(
+            scroll_to_show(0.0, 870.0 - PADDING_Y - ITEM_HEIGHT, 870.0 - PADDING_Y, 784.0, 870.0),
+            86.0
+        );
+        // Back to the first row scrolls to the top; a visible row leaves the scroll alone.
+        assert_eq!(scroll_to_show(86.0, ROWS_TOP, ROWS_TOP + ITEM_HEIGHT, 784.0, 870.0), 0.0);
+        assert_eq!(scroll_to_show(40.0, 300.0, 300.0 + ITEM_HEIGHT, 784.0, 870.0), 40.0);
+    }
 }

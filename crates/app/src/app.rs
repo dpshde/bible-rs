@@ -478,6 +478,10 @@ impl BibleApp {
         // The book picker takes the single keys (arrows, return, escape) while it's open.
         let picker = crate::book_picker::is_open(ctx);
         let overlay = self.palette.is_some() || self.settings_ui.is_some() || self.shortcuts_open;
+        // The verse menu takes the arrows and escape; its Open in › flyout takes every single key,
+        // since typing there filters destinations.
+        let menu = self.verse_menu.is_some();
+        let flyout = self.verse_menu.as_ref().is_some_and(|m| m.flyout_open());
         // The rows of Settings › Shortcuts, with any chords chosen there.
         let bindings = crate::keymap::bindings(&self.settings.shortcuts);
         let anywhere = |a: &Action| matches!(a, Action::OpenPalette | Action::OpenSearch(_));
@@ -533,7 +537,7 @@ impl BibleApp {
             {
                 key(cmd, k, Action::TranslationNumber(n));
             }
-            if typing {
+            if typing || flyout {
                 return;
             }
             // Copying works with the book picker open; the reader's single keys wait for it.
@@ -544,17 +548,19 @@ impl BibleApp {
             if picker {
                 return;
             }
-            key(Modifiers::NONE, Key::ArrowLeft, Action::PrevChapter);
-            key(Modifiers::NONE, Key::ArrowRight, Action::NextChapter);
-            key(Modifiers::NONE, Key::ArrowDown, Action::ScrollLines(3.0));
-            key(Modifiers::NONE, Key::ArrowUp, Action::ScrollLines(-3.0));
+            if !menu {
+                key(Modifiers::NONE, Key::ArrowLeft, Action::PrevChapter);
+                key(Modifiers::NONE, Key::ArrowRight, Action::NextChapter);
+                key(Modifiers::NONE, Key::ArrowDown, Action::ScrollLines(3.0));
+                key(Modifiers::NONE, Key::ArrowUp, Action::ScrollLines(-3.0));
+                key(Modifiers::NONE, Key::Escape, Action::ClearSelection);
+            }
             key(Modifiers::NONE, Key::PageDown, Action::ScrollPages(1.0));
             key(Modifiers::NONE, Key::PageUp, Action::ScrollPages(-1.0));
             key(Modifiers::SHIFT, Key::Space, Action::ScrollPages(-1.0));
             key(Modifiers::NONE, Key::Space, Action::ScrollPages(1.0));
             key(Modifiers::NONE, Key::J, Action::SelectNext);
             key(Modifiers::NONE, Key::K, Action::SelectPrev);
-            key(Modifiers::NONE, Key::Escape, Action::ClearSelection);
             key(Modifiers::NONE, Key::Slash, Action::OpenSearch(None));
             key(Modifiers::SHIFT, Key::Questionmark, Action::ShowShortcuts);
             key(Modifiers::NONE, Key::Questionmark, Action::ShowShortcuts);
@@ -593,6 +599,25 @@ impl BibleApp {
         };
         let t = self.chapter_text(&id, span.first.chapter_idx());
         self.study.span_color(&span, |r| t.as_ref().and_then(|t| t.find(r)).map(|v| v.text.to_string()))
+    }
+
+    /// Where Open in › sends the selection. Words chosen in a parallel column go in that column's
+    /// translation, as copying does; whole verses in the reader's.
+    pub fn open_in_url(&self, adapter_id: &str) -> Option<String> {
+        let passage = bible_core::open_in::Passage::from_refs(&self.reader.selected_refs())?;
+        let translation = self.reader.text_span().map_or(self.settings.translation.as_str(), |(_, id)| id);
+        let verse_text = self
+            .library
+            .load(translation)
+            .ok()
+            .map(|t| bible_core::open_in::passage_plain_text(&t, passage))
+            .unwrap_or_default();
+        Some(bible_core::open_in::open_url_for(passage, adapter_id, translation, &verse_text))
+    }
+
+    /// Whether the verse menu's Open in › flyout is open (and so has the keyboard).
+    pub fn open_in_flyout_open(&self) -> bool {
+        self.verse_menu.as_ref().is_some_and(|m| m.flyout_open())
     }
 
     fn selection_or_location(&self) -> Vec<VerseRef> {
@@ -781,20 +806,7 @@ impl BibleApp {
                 }
             }
             Action::OpenIn(adapter_id) => {
-                let refs = self.reader.selected_refs();
-                if let Some(passage) = bible_core::open_in::Passage::from_refs(&refs) {
-                    let verse_text = self
-                        .library
-                        .load(&self.settings.translation)
-                        .ok()
-                        .map(|t| bible_core::open_in::passage_plain_text(&t, passage))
-                        .unwrap_or_default();
-                    let url = bible_core::open_in::open_url_for(
-                        passage,
-                        &adapter_id,
-                        &self.settings.translation,
-                        &verse_text,
-                    );
+                if let Some(url) = self.open_in_url(&adapter_id) {
                     open_url(&url);
                     let name = self
                         .open_in_catalog
