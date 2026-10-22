@@ -945,13 +945,11 @@ export class ReadApp {
 			case 'bookmarkVerses': {
 				const refs = a.verses;
 				if (!refs.length) break;
+				const range = this.rangeLabel(refs[0], refs[refs.length - 1]);
 				const ok = this.study((c) => {
 					for (const v of refs) c.bible.setBookmark(v, '');
 				}, "Couldn't save bookmark");
-				if (ok !== undefined) {
-					if (refs.length === 1) this.toastNow(`Bookmarked ${this.label(refs[0])}`);
-					else this.toastNow(`Bookmarked ${refs.length} verses from ${this.label(refs[0])}`);
-				}
+				if (ok !== undefined) this.toastNow(`Bookmarked ${range}`);
 				break;
 			}
 			case 'removeBookmark':
@@ -1146,6 +1144,17 @@ export class ReadApp {
 	/** "John 3:16". */
 	label(v: VerseRef): string {
 		return `${chapterLabel(this.chapterIndex(v))}:${v.verse}`;
+	}
+
+	/** "John 3:16" or "John 3:16–18" (same-chapter), matching `reference::format_range`. */
+	rangeLabel(from: VerseRef, to: VerseRef): string {
+		if (from.book === to.book && from.chapter === to.chapter && from.verse === to.verse) {
+			return this.label(from);
+		}
+		if (from.book === to.book && from.chapter === to.chapter) {
+			return `${chapterLabel(this.chapterIndex(from))}:${from.verse}–${to.verse}`;
+		}
+		return `${this.label(from)}–${to.chapter}:${to.verse}`;
 	}
 
 	/** The number of verses in a chapter (the canonical count). */

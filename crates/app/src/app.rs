@@ -962,29 +962,26 @@ impl BibleApp {
                 }
             }
             Action::BookmarkVerses(refs) => {
+                let Some(first) = refs.first().copied() else { return };
+                let last = *refs.last().unwrap_or(&first);
+                let range = bible_core::reference::format_range(first, last);
                 let mut added = 0;
-                let mut first = None;
                 for v in refs {
                     if self.study.is_bookmarked(v) {
-                        first.get_or_insert(v);
                         continue;
                     }
                     match self.study.set_bookmark(v, Some("")) {
-                        Ok(()) => {
-                            added += 1;
-                            first.get_or_insert(v);
-                        }
+                        Ok(()) => added += 1,
                         Err(e) => {
                             self.toast(ctx, format!("Couldn't save bookmark: {e:#}"));
                             return;
                         }
                     }
                 }
-                match (added, first) {
-                    (0, Some(v)) => self.toast(ctx, format!("Already bookmarked {v}")),
-                    (1, Some(v)) => self.toast(ctx, format!("Bookmarked {v}")),
-                    (n, Some(v)) if n > 1 => self.toast(ctx, format!("Bookmarked {n} verses from {v}")),
-                    _ => {}
+                if added == 0 {
+                    self.toast(ctx, format!("Already bookmarked {range}"));
+                } else {
+                    self.toast(ctx, format!("Bookmarked {range}"));
                 }
             }
             Action::ShowShortcuts => self.shortcuts_open = !self.shortcuts_open,
