@@ -590,6 +590,23 @@ export class ReadApp {
 		return out;
 	}
 
+	/** Consecutive same-chapter verses that each have a highlight, expanding from `v`. */
+	highlightRun(v: VerseRef): VerseRef[] | null {
+		const m = this.marks(this.settings.translation, this.chapterIndex(v));
+		const lit = (n: number) => {
+			const row = m.get(n);
+			return !!(row?.highlight || (row?.highlights && row.highlights.length));
+		};
+		if (!lit(v.verse)) return null;
+		let lo = v.verse;
+		let hi = v.verse;
+		while (lo > 1 && lit(lo - 1)) lo--;
+		while (hi < 255 && lit(hi + 1)) hi++;
+		const out: VerseRef[] = [];
+		for (let n = lo; n <= hi; n++) out.push({ book: v.book, chapter: v.chapter, verse: n });
+		return out;
+	}
+
 	noteFor(v: VerseRef): Note | null {
 		void this.studyGen;
 		return this.core?.bible.note(v) ?? null;
@@ -910,7 +927,14 @@ export class ReadApp {
 				this.dispatch({ type: 'editNote', verse: this.selectionOrLocation()[0] });
 				break;
 			case 'toggleBookmark': {
+				// B / ⌘D: when the verse is highlighted, bookmark the outer consecutive run
+				// (same as the verse menu's "Bookmark <range>" row).
 				const v = this.selectionOrLocation()[0];
+				const run = this.highlightRun(v);
+				if (run?.length) {
+					this.dispatch({ type: 'bookmarkVerses', verses: run });
+					break;
+				}
 				const on = this.study((c) => c.bible.toggleBookmark(v), "Couldn't save bookmark");
 				if (on !== undefined) this.toastNow(`${on ? 'Bookmarked' : 'Removed bookmark'} ${this.label(v)}`);
 				break;

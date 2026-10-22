@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
 	import { getApp } from '../app.svelte';
-	import { HIGHLIGHT_COLORS, type VerseRef } from '../core';
+	import { HIGHLIGHT_COLORS } from '../core';
 	import { cmdText, isMac, shortcutText } from '../keyboard';
 	import { Icon, Menu, MenuHeader, MenuItem, MenuSeparator } from '../ui';
 	import { pointRect } from '../ui/float';
@@ -22,24 +22,7 @@
 	const current = $derived(app.selectionColor());
 	const keys = (id: string) => shortcutText(id, app.settings.shortcuts);
 
-	/** Consecutive same-chapter verses that each have a highlight, expanding from `v`. */
-	function highlightRun(v: VerseRef): VerseRef[] | null {
-		const m = app.marks(app.settings.translation, app.chapterIndex(v));
-		const lit = (n: number) => {
-			const row = m?.get(n);
-			return !!(row?.highlight || (row?.highlights && row.highlights.length));
-		};
-		if (!lit(v.verse)) return null;
-		let lo = v.verse;
-		let hi = v.verse;
-		while (lo > 1 && lit(lo - 1)) lo--;
-		while (hi < 255 && lit(hi + 1)) hi++;
-		const out: VerseRef[] = [];
-		for (let n = lo; n <= hi; n++) out.push({ book: v.book, chapter: v.chapter, verse: n });
-		return out;
-	}
-
-	const bookmarkRun = $derived(refs.length ? highlightRun(refs[0]) : null);
+	const bookmarkRun = $derived(refs.length ? app.highlightRun(refs[0]) : null);
 	const bookmarkLabel = $derived.by(() => {
 		if (bookmarkRun?.length) {
 			const a = bookmarkRun[0];
@@ -57,10 +40,27 @@
 		app.dispatch(a);
 	};
 
+	const bookmark = () =>
+		run(
+			bookmarkRun?.length
+				? { type: 'bookmarkVerses', verses: bookmarkRun }
+				: { type: 'toggleBookmark' }
+		);
+
+	/** B while open: the row's action (highlight run), not the global toggleBookmark. */
+	function onKey(e: KeyboardEvent) {
+		if (e.defaultPrevented || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+		if (e.key !== 'b' && e.key !== 'B') return;
+		e.preventDefault();
+		bookmark();
+	}
+
 	$effect(() => {
 		if (!refs.length) close();
 	});
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <Menu
 	{anchor}
@@ -105,17 +105,7 @@
 		shortcut={keys('note')}
 		onclick={() => run({ type: 'editSelectedNote' })}
 	/>
-	<MenuItem
-		icon="bookmark"
-		label={bookmarkLabel}
-		shortcut={keys('bookmark')}
-		onclick={() =>
-			run(
-				bookmarkRun?.length
-					? { type: 'bookmarkVerses', verses: bookmarkRun }
-					: { type: 'toggleBookmark' }
-			)}
-	/>
+	<MenuItem icon="bookmark" label={bookmarkLabel} shortcut={keys('bookmark')} onclick={bookmark} />
 	<MenuSeparator />
 	<MenuItem icon="copy" label="Copy" shortcut={cmdText('C')} onclick={() => run({ type: 'copyText' })} />
 	<MenuItem icon="quote" label="Copy with Reference" shortcut={keys('copy')} onclick={() => run({ type: 'copy' })} />
