@@ -25,6 +25,8 @@ pub enum Action {
     ToggleParallel,
     /// Do something (a jump), then show it with the parallel translations.
     OpenInParallel(Box<Action>),
+    /// Go to a stretch of verses in one chapter and select them.
+    ShowVerses(VerseRef, VerseRef),
     /// Select a verse and compare it across translations.
     CompareVerse(VerseRef),
     AddParallel(String),
@@ -36,8 +38,9 @@ pub enum Action {
     EditSelectedNote,
     ToggleBookmark,
     RemoveBookmark(VerseRef),
-    /// Removes one highlight of a verse: the one stored from that char.
-    RemoveHighlight(VerseRef, u32),
+    /// Removes highlights together (a run across verses), each named by its verse and the char
+    /// it's stored from.
+    RemoveHighlights(Vec<(VerseRef, u32)>),
     RemoveNote(VerseRef),
     /// Save a note's text (an empty text removes it).
     SaveNote(VerseRef, String),

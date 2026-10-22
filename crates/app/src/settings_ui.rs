@@ -246,7 +246,8 @@ impl SettingsUi {
         let data_dir = library.data_dir().to_path_buf();
 
         group_title(ui, p, "Your library");
-        let (h, n, b) = study.counts();
+        let (_, n, b) = study.counts();
+        let h = study.highlight_runs().len();
         let stats = [(h, "highlights"), (b, "bookmarks"), (n, "notes"), (study.plans().len(), "plans")];
         rows_card(ui, p, &[72.0, 44.0], |ui, i, r| {
             let painter = ui.painter().clone();

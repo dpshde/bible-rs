@@ -609,6 +609,15 @@ impl BibleApp {
                     verse.filter(|_| flash).map(|v| VerseRef::new(chapter.book(), chapter.chapter(), v));
                 self.reader.set_selection(landed);
             }
+            Action::ShowVerses(first, last) => {
+                self.apply_one(
+                    ctx,
+                    Action::Jump { chapter: first.chapter_idx(), verse: Some(first.verse), flash: true },
+                );
+                if last != first {
+                    self.reader.selection = Some((first, last));
+                }
+            }
             // From a page, Back returns to the reader.
             Action::Back if !self.pages.reader() => self.pages.open(crate::pages::Page::Reader),
             Action::Back => {
@@ -736,8 +745,8 @@ impl BibleApp {
                     self.toast(ctx, format!("{e:#}"));
                 }
             }
-            Action::RemoveHighlight(v, start) => {
-                if let Err(e) = self.study.remove_highlight(v, start) {
+            Action::RemoveHighlights(keys) => {
+                if let Err(e) = self.study.remove_highlights(&keys) {
                     self.toast(ctx, format!("{e:#}"));
                 }
             }

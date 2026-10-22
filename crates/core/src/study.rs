@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::books::{BookId, ChapterIdx, VerseRef};
 use crate::highlight;
-pub use crate::highlight::{Highlight, TextSpan};
+pub use crate::highlight::{Highlight, Run as HighlightRun, TextSpan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -484,6 +484,24 @@ impl StudyStore {
         Ok(())
     }
 
+    /// Removes highlights, each named by its verse and the char it's stored from (a run's
+    /// [`HighlightRun::keys`]), together.
+    pub fn remove_highlights(&mut self, keys: &[(VerseRef, u32)]) -> Result<()> {
+        let mut verses: Vec<VerseRef> = keys.iter().map(|(v, _)| *v).collect();
+        verses.sort();
+        verses.dedup();
+        self.transaction(|s| {
+            for v in verses {
+                let parts: Vec<Highlight> =
+                    s.highlight_parts(v).iter().filter(|h| !keys.contains(&(v, h.start))).cloned().collect();
+                s.put_highlights(v, parts)?;
+            }
+            Ok(())
+        })?;
+        self.generation += 1;
+        Ok(())
+    }
+
     /// Replaces a verse's highlights.
     fn put_highlights(&mut self, v: VerseRef, mut parts: Vec<Highlight>) -> Result<()> {
         parts.sort_by_key(|h| h.start);
@@ -605,6 +623,12 @@ impl StudyStore {
         v
     }
 
+    /// Every highlight as runs (one stretch across neighbouring verses is one), the most recently
+    /// made first: what lists show and count.
+    pub fn highlight_runs(&self) -> Vec<HighlightRun<'_>> {
+        crate::highlight::runs(&self.highlights())
+    }
+
     pub fn notes(&self) -> Vec<(VerseRef, &Note)> {
         let mut v: Vec<_> =
             self.notes.iter().filter_map(|(k, n)| Some((VerseRef::from_key(*k)?, n))).collect();
@@ -617,6 +641,7 @@ impl StudyStore {
     }
 
     /// How many highlights (a verse's parts counting one each), notes and bookmarks there are.
+    /// Lists count a run across verses as one: see [`Self::highlight_runs`].
     pub fn counts(&self) -> (usize, usize, usize) {
         (self.highlights.values().map(Vec::len).sum(), self.notes.len(), self.bookmarks.len())
     }
@@ -1434,6 +1459,30 @@ mod tests {
         assert_eq!(s.counts().0, 4);
         assert_eq!(shown(&s, jn3(18)), vec![("He that believ".into(), HighlightColor::Blue)]);
         assert_eq!(s.highlight(jn3(17)), Some(HighlightColor::Pink));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_run_of_highlights_counts_and_goes_as_one() {
+        let dir = std::env::temp_dir().join(format!("bible-rs-runs-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut s = StudyStore::open(&path).unwrap();
+        s.highlight_span(&TextSpan::verses(jn3(16), jn3(18)), Some(HighlightColor::Pink), text).unwrap();
+        s.set_highlight(jn3(20), Some(HighlightColor::Pink)).unwrap();
+        s.set_highlight(jn3(21), Some(HighlightColor::Yellow)).unwrap();
+        let runs = s.highlight_runs();
+        assert_eq!(runs.len(), 3);
+        assert_eq!(s.counts().0, 5, "stored a verse at a time");
+        let run = runs.iter().find(|r| r.first() == jn3(16)).unwrap();
+        assert_eq!(run.last(), jn3(18));
+        let keys = run.keys();
+        s.remove_highlights(&keys).unwrap();
+        drop(s);
+        let s = StudyStore::open(&path).unwrap();
+        assert_eq!((16..=18).filter_map(|n| s.highlight(jn3(n))).count(), 0, "the whole run goes");
+        assert_eq!(s.highlight(jn3(20)), Some(HighlightColor::Pink));
+        assert_eq!(s.highlight_runs().len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -290,7 +290,9 @@ impl Sidebar {
             |b: BookId| meta.as_ref().map(|m| m.book_short(b).to_string()).unwrap_or_else(|| b.name().into());
         let filter = self.filter.trim().to_lowercase();
         let matches = |b: BookId| filter.is_empty() || book_name(b).to_lowercase().contains(&filter);
-        let (nh, nn, nb) = study.counts();
+        let (_, nn, nb) = study.counts();
+        // Highlights as the list shows them: a stretch across verses is one.
+        let nh = study.highlight_runs().len();
         let mut list = ScrollArea::vertical().auto_shrink(false).id_salt("source-list");
         if self.scroll_top > 0 {
             self.scroll_top -= 1;
@@ -526,20 +528,22 @@ impl Sidebar {
         let t = env.library.load(env.translation).ok();
         let verse_text =
             |v: VerseRef| t.as_ref().and_then(|t| t.find(v)).map(|v| v.plain_text()).unwrap_or_default();
-        /// A row: its verse, colour bar, note and snippet, and which of the verse's highlights.
+        /// A row: its verses, colour bar, note and snippet, and which highlights it shows.
         struct Row {
             verse: VerseRef,
+            last: VerseRef,
             bar: Option<Color32>,
             note: Option<String>,
             snippet: String,
-            start: u32,
+            keys: Vec<(VerseRef, u32)>,
         }
         let row = |verse: VerseRef, note: Option<String>| Row {
             verse,
+            last: verse,
             bar: None,
             note,
             snippet: verse_text(verse),
-            start: 0,
+            keys: Vec::new(),
         };
         let items: Vec<Row> = match kind {
             StudyKind::Bookmarks => {
@@ -549,15 +553,17 @@ impl Sidebar {
             }
             StudyKind::Highlights => {
                 colour_filter(ui, p, &mut self.highlight_filter);
-                // Part of a verse shows the words it covers.
+                // A stretch across verses is one row; part of a verse shows the words it covers.
                 study
-                    .highlights_dated()
+                    .highlight_runs()
                     .into_iter()
-                    .filter(|(_, h)| self.highlight_filter.is_none_or(|f| f == h.color))
-                    .map(|(v, h)| {
-                        let r = row(v, None);
-                        let snippet = if h.is_whole() { r.snippet } else { h.excerpt(&r.snippet) };
-                        Row { bar: Some(p.swatch(h.color)), snippet, start: h.start, ..r }
+                    .filter(|r| self.highlight_filter.is_none_or(|f| f == r.color()))
+                    .map(|r| Row {
+                        last: r.last(),
+                        bar: Some(p.swatch(r.color())),
+                        snippet: r.excerpt(verse_text),
+                        keys: r.keys(),
+                        ..row(r.first(), None)
                     })
                     .collect()
             }
@@ -583,13 +589,17 @@ impl Sidebar {
         let k = StudyKind::ALL.iter().position(|x| *x == kind).unwrap_or(0);
         let total = items.len();
         let shown = if self.study_all[k] { total } else { total.min(RECENT_ITEMS) };
-        for Row { verse: v, bar, note, snippet, start } in items.into_iter().take(shown) {
+        for Row { verse: v, last, bar, note, snippet, keys } in items.into_iter().take(shown) {
             let name = t
                 .as_ref()
                 .map(|t| t.meta.ref_name(v.book).to_string())
                 .unwrap_or_else(|| v.book.ref_name().into());
             let item = ListItem {
-                reference: format!("{name} {}:{}", v.chapter, v.verse),
+                reference: if last == v {
+                    format!("{name} {}:{}", v.chapter, v.verse)
+                } else {
+                    format!("{name} {}:{}–{}", v.chapter, v.verse, last.verse)
+                },
                 trailing: abbrev.clone(),
                 bar,
                 note,
@@ -598,12 +608,12 @@ impl Sidebar {
             };
             let resp = list_item(ui, p, &item);
             if resp.clicked() {
-                actions.push(Action::Jump { chapter: v.chapter_idx(), verse: Some(v.verse), flash: true });
+                actions.push(Action::ShowVerses(v, last));
             }
             resp.context_menu(|ui| {
                 let (label, a) = match kind {
                     StudyKind::Bookmarks => ("Remove bookmark", Action::RemoveBookmark(v)),
-                    StudyKind::Highlights => ("Remove highlight", Action::RemoveHighlight(v, start)),
+                    StudyKind::Highlights => ("Remove highlight", Action::RemoveHighlights(keys.clone())),
                     StudyKind::Notes => ("Delete note", Action::RemoveNote(v)),
                 };
                 if ui.button(label).clicked() {

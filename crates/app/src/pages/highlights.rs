@@ -1,8 +1,9 @@
-//! Study › Highlights (frame 18): cards with each verse on its highlight colour, filtered by
-//! colour, book and testament, in two columns.
+//! Study › Highlights (frame 18): cards with each highlight on its colour (a stretch across
+//! neighbouring verses is one card), filtered by colour, book and testament, in two columns.
 
 use eframe::egui::{self, Color32, FontId, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 
+use bible_core::reference::format_range;
 use bible_core::study::HighlightColor;
 use bible_core::{BookId, VerseRef};
 
@@ -17,6 +18,18 @@ const GAP_X: f32 = 20.0;
 const GAP_Y: f32 = 16.0;
 /// Verse lines: Literata 16 on 26 pt rows, each on a 24 pt highlight run.
 const ROW: f32 = 26.0;
+
+/// One card: a highlight, or a run of them across neighbouring verses.
+struct Card {
+    first: VerseRef,
+    last: VerseRef,
+    label: String,
+    color: HighlightColor,
+    created: i64,
+    text: String,
+    /// The highlights it shows, to remove together.
+    keys: Vec<(VerseRef, u32)>,
+}
 
 #[derive(Default)]
 pub struct State {
@@ -37,8 +50,8 @@ impl State {
             t.as_ref().map(|t| t.meta.book_short(b).to_string()).unwrap_or_else(|| b.name().into())
         };
 
-        let all = env.study.highlights_dated();
-        let mut books: Vec<BookId> = all.iter().map(|(v, _)| v.book).collect();
+        let all = env.study.highlight_runs();
+        let mut books: Vec<BookId> = all.iter().map(|r| r.first().book).collect();
         books.sort();
         books.dedup();
         let subtitle = match (all.len(), books.len()) {
@@ -97,22 +110,27 @@ impl State {
         let q = env.query.trim().to_lowercase();
         let verse_text =
             |v: VerseRef| t.as_ref().and_then(|t| t.find(v)).map(|v| v.plain_text()).unwrap_or_default();
-        // A card per highlight: part of a verse shows the words it covers.
-        let scoped: Vec<(VerseRef, HighlightColor, i64, String, u32)> = all
+        // A card per highlight, a stretch across verses being one: part of a verse shows the words
+        // it covers.
+        let scoped: Vec<Card> = all
             .iter()
-            .filter(|(v, _)| match self.testament {
-                1 => v.book.0 < bible_core::books::FIRST_NT_BOOK.0,
-                2 => v.book.0 >= bible_core::books::FIRST_NT_BOOK.0,
+            .filter(|r| match self.testament {
+                1 => r.first().book.0 < bible_core::books::FIRST_NT_BOOK.0,
+                2 => r.first().book.0 >= bible_core::books::FIRST_NT_BOOK.0,
                 _ => true,
             })
-            .filter(|(v, _)| self.book.is_none_or(|b| v.book == b))
-            .map(|(v, h)| {
-                let text = verse_text(*v);
-                let text = if h.is_whole() { text } else { h.excerpt(&text) };
-                (*v, h.color, h.created, text, h.start)
+            .filter(|r| self.book.is_none_or(|b| r.first().book == b))
+            .map(|r| Card {
+                first: r.first(),
+                last: r.last(),
+                label: format_range(r.first(), r.last()),
+                color: r.color(),
+                created: r.created(),
+                text: r.excerpt(verse_text),
+                keys: r.keys(),
             })
-            .filter(|(v, _, _, text, _)| {
-                q.is_empty() || v.display().to_lowercase().contains(&q) || text.to_lowercase().contains(&q)
+            .filter(|c| {
+                q.is_empty() || c.label.to_lowercase().contains(&q) || c.text.to_lowercase().contains(&q)
             })
             .collect();
 
@@ -124,7 +142,7 @@ impl State {
             tabs.push((
                 Some(c),
                 env.settings.highlight_name(c),
-                scoped.iter().filter(|(_, hc, _, _, _)| *hc == c).count(),
+                scoped.iter().filter(|card| card.color == c).count(),
             ));
         }
         for (c, label, n) in tabs {
@@ -148,10 +166,12 @@ impl State {
         let body = y + 28.0 + 20.0;
         let mut bottoms = vec![body; columns];
         let serif = FontId::new(16.0, theme::family(theme::SERIF));
-        for (v, color, created, verse, start) in
-            scoped.iter().filter(|(_, c, _, _, _)| self.color.is_none_or(|s| s == *c))
+        for Card { first, last, label, color, created, text: verse, keys } in
+            scoped.iter().filter(|c| self.color.is_none_or(|s| s == c.color))
         {
-            let lines = flow(&painter, verse, &serif, 12.0, card_w - 32.0 - 4.0, 3);
+            // Three lines a verse, to three verses' worth.
+            let most = 3 * keys.len().clamp(1, 3);
+            let lines = flow(&painter, verse, &serif, 12.0, card_w - 32.0 - 4.0, most);
             let h = 16.0 + 16.0 + 10.0 + ROW * lines.len().max(1) as f32 + 16.0;
             let col = (0..columns).min_by(|a, b| bottoms[*a].total_cmp(&bottoms[*b])).unwrap_or(0);
             let card = Rect::from_min_size(
@@ -159,7 +179,7 @@ impl State {
                 vec2(card_w, h),
             );
             bottoms[col] = card.bottom() + GAP_Y;
-            let resp = ui.interact(card, ui.id().with(("highlight", v.key(), *start)), Sense::click());
+            let resp = ui.interact(card, ui.id().with(("highlight", first.key(), keys[0].1)), Sense::click());
             painter.add(
                 egui::epaint::RectShape::filled(
                     card.translate(vec2(0.0, 1.0)),
@@ -178,7 +198,7 @@ impl State {
                 cx + 18.0,
                 card.top() + 16.0,
                 16.0,
-                &v.display(),
+                label,
                 theme::ui_semibold(13.0),
                 p.ink,
                 false,
@@ -212,11 +232,11 @@ impl State {
                 paint_runs(&painter, cx + 2.0, css_baseline(run.top(), 24.0, 16.0, true), l, p.ink);
             }
             if resp.clicked() {
-                actions.push(Action::Jump { chapter: v.chapter_idx(), verse: Some(v.verse), flash: true });
+                actions.push(Action::ShowVerses(*first, *last));
             }
             resp.context_menu(|ui| {
                 if ui.button("Remove Highlight").clicked() {
-                    actions.push(Action::RemoveHighlight(*v, *start));
+                    actions.push(Action::RemoveHighlights(keys.clone()));
                 }
             });
         }

@@ -297,6 +297,77 @@ pub fn utf16_from_chars(text: &str, chars: usize) -> usize {
     text.chars().take(chars).map(char::len_utf16).sum()
 }
 
+/// Highlights on neighbouring verses that read as one stretch: one colour, verse after verse in a
+/// chapter, each running on from the last (the earlier to its verse's end, the later from its
+/// start), as a highlight across verses is stored. Lists show a run as one item.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Run<'a> {
+    /// Its highlights in reading order, each with its verse.
+    pub parts: Vec<(VerseRef, &'a Highlight)>,
+}
+
+impl Run<'_> {
+    pub fn first(&self) -> VerseRef {
+        self.parts[0].0
+    }
+
+    pub fn last(&self) -> VerseRef {
+        self.parts[self.parts.len() - 1].0
+    }
+
+    pub fn color(&self) -> HighlightColor {
+        self.parts[0].1.color
+    }
+
+    /// When the most recently made of its highlights was made.
+    pub fn created(&self) -> i64 {
+        self.parts.iter().map(|(_, h)| h.created).max().unwrap_or(0)
+    }
+
+    /// Each highlight's verse and start: what removing one of them names.
+    pub fn keys(&self) -> Vec<(VerseRef, u32)> {
+        self.parts.iter().map(|(v, h)| (*v, h.start)).collect()
+    }
+
+    /// The words it covers, verse texts from `text`, with an ellipsis where it cuts a verse short.
+    pub fn excerpt(&self, text: impl Fn(VerseRef) -> String) -> String {
+        let pieces: Vec<String> = self
+            .parts
+            .iter()
+            .map(|(v, h)| {
+                let t = text(*v);
+                if h.is_whole() { t.trim().to_string() } else { h.excerpt(&t) }
+            })
+            .collect();
+        pieces.join(" ")
+    }
+}
+
+/// The highlights (in any order) as runs, the most recently made first.
+pub fn runs<'a>(highlights: &[(VerseRef, &'a Highlight)]) -> Vec<Run<'a>> {
+    let mut sorted = highlights.to_vec();
+    sorted.sort_by_key(|(v, h)| (*v, h.start));
+    let mut out: Vec<Run<'a>> = Vec::new();
+    for (v, h) in sorted {
+        if let Some(run) = out.last_mut() {
+            let (pv, ph) = run.parts[run.parts.len() - 1];
+            if pv.book == v.book
+                && pv.chapter == v.chapter
+                && pv.verse.checked_add(1) == Some(v.verse)
+                && ph.color == h.color
+                && ph.end.is_none()
+                && h.start == 0
+            {
+                run.parts.push((v, h));
+                continue;
+            }
+        }
+        out.push(Run { parts: vec![(v, h)] });
+    }
+    out.sort_by_key(|r| (std::cmp::Reverse(r.created()), r.first()));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -493,5 +564,42 @@ mod tests {
         assert_eq!(chars_from_utf16(text, 1), 1);
         assert_eq!(chars_from_utf16(text, 99), 3);
         assert_eq!(utf16_from_chars("Ἰησοῦς", 6), 6);
+    }
+
+    #[test]
+    fn neighbouring_verses_of_one_colour_are_one_run() {
+        use HighlightColor::Pink;
+        let v = |n| VerseRef::new(BookId(50), 4, n);
+        let whole = |c, t| Highlight::whole(c, t);
+        let (a, b, c) = (whole(Pink, 10), whole(Pink, 10), whole(Pink, 30));
+        let r = runs(&[(v(13), &c), (v(11), &a), (v(12), &b)]);
+        assert_eq!(r.len(), 1);
+        assert_eq!((r[0].first(), r[0].last(), r[0].color(), r[0].created()), (v(11), v(13), Pink, 30));
+        assert_eq!(r[0].keys(), vec![(v(11), 0), (v(12), 0), (v(13), 0)]);
+        assert_eq!(r[0].excerpt(|v| format!(" verse {} ", v.verse)), "verse 11 verse 12 verse 13");
+
+        // Another colour, a verse between, or another chapter or book keeps them apart.
+        let y = whole(Yellow, 10);
+        assert_eq!(runs(&[(v(11), &a), (v(12), &y)]).len(), 2);
+        assert_eq!(runs(&[(v(11), &a), (v(13), &c)]).len(), 2);
+        let next = VerseRef::new(BookId(50), 5, 1);
+        let end = VerseRef::new(BookId(50), 4, 23);
+        assert_eq!(runs(&[(end, &a), (next, &b)]).len(), 2);
+        assert_eq!(runs(&[(v(11), &a), (VerseRef::new(BookId(51), 4, 12), &b)]).len(), 2);
+
+        // Parts join only where the stretch runs on: to the end of one verse, from the start of the next.
+        let tail = Highlight { start: 8, quote: Some("x".into()), ..whole(Pink, 10) };
+        let head = Highlight { end: Some(5), quote: Some("y".into()), ..whole(Pink, 10) };
+        let mid = Highlight { start: 3, end: Some(9), quote: Some("z".into()), ..whole(Pink, 10) };
+        let later = Highlight { start: 4, ..whole(Pink, 10) };
+        let r = runs(&[(v(11), &tail), (v(12), &b), (v(13), &head)]);
+        assert_eq!(r.len(), 1, "tail, whole, head: one stretch");
+        assert_eq!(runs(&[(v(11), &mid), (v(12), &b)]).len(), 2, "stops mid-verse");
+        assert_eq!(runs(&[(v(11), &head), (v(12), &b)]).len(), 2, "ends before its verse does");
+        assert_eq!(runs(&[(v(11), &a), (v(12), &later)]).len(), 2, "starts mid-verse");
+        // A verse's earlier part stays its own; its last part runs on.
+        let first = Highlight { end: Some(3), quote: Some("w".into()), ..whole(Yellow, 5) };
+        let r = runs(&[(v(11), &first), (v(11), &tail), (v(12), &b)]);
+        assert_eq!(r.iter().map(|r| r.parts.len()).collect::<Vec<_>>(), vec![2, 1], "newest first");
     }
 }
