@@ -188,6 +188,9 @@ fn a_pinned_book_sits_above_the_testaments() {
 
     // So does clicking its pin, without opening its chapters.
     let john = find(&h, "John")[0];
+    h.event(Event::PointerMoved(john));
+    h.run_steps(2);
+    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::Default, "pinned rows too");
     click(&mut h, pin_at(john.y), PointerButton::Primary);
     assert!(h.state().settings.pinned().is_empty());
 
@@ -200,7 +203,12 @@ fn a_pinned_book_sits_above_the_testaments() {
     h.event(Event::PointerMoved(mark));
     h.run_steps(4);
     assert_eq!(closed_in(&h, lane(mark.y), false), 1, "an outline pin on hover");
+    let cursor = |h: &Harness<'_, BibleApp>| h.output().platform_output.cursor_icon;
+    assert_eq!(cursor(&h), egui::CursorIcon::Default, "the row keeps the default cursor");
     assert_eq!(fills_in(&h, lane(mark.y)), 0);
+    h.event(Event::PointerMoved(pin_at(mark.y)));
+    h.run_steps(2);
+    assert_eq!(cursor(&h), egui::CursorIcon::PointingHand, "the pin takes the pointing hand");
     let here = h.state().reader.location.0;
     click(&mut h, pin_at(mark.y), PointerButton::Primary);
     assert_eq!(h.state().settings.pinned(), [MARK]);

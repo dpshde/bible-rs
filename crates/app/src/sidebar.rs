@@ -469,8 +469,7 @@ impl Sidebar {
                                 pin_lane: true,
                                 ..Row::default()
                             },
-                        )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                        );
                         let pin = pin_toggle(ui, p, resp.rect, b, true, true);
                         if pin.clicked() {
                             actions.push(Action::UnpinBook(b));
