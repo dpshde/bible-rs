@@ -611,27 +611,6 @@ impl BibleApp {
         self.study.span_color(&span, |r| t.as_ref().and_then(|t| t.find(r)).map(|v| v.text.to_string()))
     }
 
-    /// Where book `b` was last read: the reader's chapter if it is in `b`, else the newest place
-    /// in `b` from this session's history, else from the reading history, else chapter 1.
-    pub fn last_read_chapter(&self, b: BookId) -> ChapterIdx {
-        let here = self.reader.location.0;
-        if here.book() == b {
-            return here;
-        }
-        self.history
-            .recent()
-            .map(|(c, _)| *c)
-            .find(|c| c.book() == b)
-            .or_else(|| {
-                self.study
-                    .reading_since(0)
-                    .into_iter()
-                    .find(|s| s.book == b)
-                    .and_then(|s| ChapterIdx::new(b, s.chapter))
-            })
-            .unwrap_or_else(|| b.first_chapter())
-    }
-
     fn selection_or_location(&self) -> Vec<VerseRef> {
         let sel = self.reader.selected_refs();
         if sel.is_empty() {
@@ -769,10 +748,6 @@ impl BibleApp {
             }
             Action::PinBook(b) => self.settings.pin_book(b),
             Action::UnpinBook(b) => self.settings.unpin_book(b),
-            Action::OpenBook(b) => {
-                let chapter = self.last_read_chapter(b);
-                self.apply_one(ctx, Action::Jump { chapter, verse: None, flash: false });
-            }
             Action::ToggleBookmark => {
                 let v = self.selection_or_location()[0];
                 match self.study.toggle_bookmark(v) {

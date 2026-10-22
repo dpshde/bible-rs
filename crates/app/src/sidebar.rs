@@ -76,6 +76,8 @@ pub struct Sidebar {
     auto_opened: [bool; 2],
     /// The book whose chapter grid is open.
     expanded: Option<BookId>,
+    /// The pinned book whose chapter grid is open under its pinned row (apart from `expanded`).
+    pinned_expanded: Option<BookId>,
     /// Which study collections are expanded, and the one last opened (drawn selected).
     study_open: [bool; 3],
     study_selected: Option<StudyKind>,
@@ -120,6 +122,7 @@ impl Sidebar {
             testaments: [false, false],
             auto_opened: [false, false],
             expanded: None,
+            pinned_expanded: None,
             study_open: [false; 3],
             study_selected: None,
             study_all: [false; 3],
@@ -450,18 +453,41 @@ impl Sidebar {
                     }
 
                     section(ui, p, "Books", false);
-                    // Pinned books, above the testaments: a click opens the book where it was last
-                    // read; a right-click unpins it.
+                    // Pinned books, above the testaments: a click opens the book's chapters right
+                    // under it (leaving the testaments as they are); the pin, or a right-click,
+                    // unpins it.
                     for &b in env.pinned.iter().filter(|b| matches(**b)) {
                         let name = book_name(b);
+                        let open = self.pinned_expanded == Some(b) && b.chapters() > 1;
                         let resp = row(
                             ui,
                             p,
-                            &Row { icon: Some(crate::icons::book), label: &name, ..Row::default() },
+                            &Row {
+                                icon: Some(crate::icons::book),
+                                label: &name,
+                                count: open.then(|| b.chapters().to_string()),
+                                mark: Some(crate::icons::pin_fill),
+                                ..Row::default()
+                            },
                         )
                         .on_hover_cursor(egui::CursorIcon::PointingHand);
+                        let on_pin = resp
+                            .interact_pointer_pos()
+                            .is_some_and(|pos| pos.x > resp.rect.right() - ROW_PAD - ICON_LANE - 4.0);
                         if resp.clicked() {
-                            actions.push(Action::OpenBook(b));
+                            if on_pin {
+                                actions.push(Action::UnpinBook(b));
+                            } else if b.chapters() == 1 {
+                                actions.push(Action::Jump {
+                                    chapter: b.first_chapter(),
+                                    verse: None,
+                                    flash: false,
+                                });
+                                // Jumping from here leaves the testaments as they are.
+                                self.revealed = Some(b);
+                            } else {
+                                self.pinned_expanded = if open { None } else { Some(b) };
+                            }
                         }
                         resp.context_menu(|ui| {
                             if ui.button("Unpin").clicked() {
@@ -469,6 +495,13 @@ impl Sidebar {
                                 ui.close();
                             }
                         });
+                        if open {
+                            let before = actions.len();
+                            chapter_grid(ui, p, b, env.location.0, &self.activity.1.chapters, actions);
+                            if actions.len() > before {
+                                self.revealed = Some(b);
+                            }
+                        }
                     }
                     for (t, (label, range)) in
                         [("Old Testament", 0..FIRST_NT_BOOK.0), ("New Testament", FIRST_NT_BOOK.0..66)]
@@ -1090,6 +1123,8 @@ struct Row<'a> {
     count: Option<String>,
     /// A disclosure chevron: `Some(open)`.
     disclosure: Option<bool>,
+    /// A small glyph in the chevron's lane, in the counts' colour (a pinned book's pin).
+    mark: Option<IconFn>,
     selected: bool,
     /// A book's highlights and notes, as a small ring in the icon lane.
     marks: Option<&'a [Option<HighlightColor>]>,
@@ -1130,6 +1165,11 @@ fn row(ui: &mut Ui, p: &Palette, r: &Row<'_>) -> Response {
         } else {
             crate::icons::disclosure(painter, chevron, color);
         }
+        right = lane.left() - GAP;
+    } else if let Some(mark) = r.mark {
+        let lane =
+            Rect::from_min_size(pos2(right - ICON_LANE, cy - ICON_LANE / 2.0), vec2(ICON_LANE, ICON_LANE));
+        mark(painter, Rect::from_center_size(lane.center(), vec2(12.0, 12.0)), p.ink_3);
         right = lane.left() - GAP;
     }
     if let Some(count) = &r.count {

@@ -187,6 +187,21 @@ pub fn disclosure(p: &Painter, r: Rect, c: Color32) {
     g.line(&[(4.5, 3.0), (7.5, 6.0), (4.5, 9.0)]);
 }
 
+/// A filled pushpin on the disclosure chevrons' 12-unit grid: a pinned book's mark.
+pub fn pin_fill(p: &Painter, r: Rect, c: Color32) {
+    let g = Grid::with(p, r, c, 12.0, 1.0);
+    // Head, body and flared collar, filled and outlined so the corners round off.
+    let head = [(4.0, 1.0), (8.0, 1.0), (8.0, 2.5), (4.0, 2.5)];
+    let body = [(4.6, 2.5), (7.4, 2.5), (8.0, 6.25), (4.0, 6.25)];
+    let collar = [(4.0, 6.25), (8.0, 6.25), (9.25, 7.75), (2.75, 7.75)];
+    for part in [&head, &body, &collar] {
+        g.fill(part);
+        g.closed(part);
+    }
+    // The needle.
+    g.line(&[(6.0, 7.75), (6.0, 11.0)]);
+}
+
 /// Up-and-down chevrons of a select (popup button).
 pub fn chevrons_up_down(p: &Painter, r: Rect, c: Color32) {
     let g = Grid::new(p, r, c);
