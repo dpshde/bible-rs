@@ -163,6 +163,16 @@ fn a_pinned_book_sits_above_the_testaments() {
     let lane = |y: f32| egui::Rect::from_center_size(pin_at(y), egui::vec2(16.0, 16.0));
     assert!(fills_in(&h, lane(john[0].y)) >= 3, "a filled pin on the pinned row");
     assert_eq!(fills_in(&h, lane(old.y)), 0, "no pin on the testament rows");
+    // And a filled book on the left, where the testaments keep the outline.
+    let label = find_rects(&h, "Old Testament")[0];
+    let left = |y: f32| {
+        egui::Rect::from_min_max(
+            egui::pos2(label.left() - 30.0, y - 10.0),
+            egui::pos2(label.left() - 2.0, y + 10.0),
+        )
+    };
+    assert!(fills_in(&h, left(john[0].y)) >= 1, "a filled book on the pinned row");
+    assert_eq!(fills_in(&h, left(old.y)), 0, "an outline book on the testament rows");
 
     // Right-clicking a pinned row unpins it.
     let pinned = find(&h, "Philippians")[0];

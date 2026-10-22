@@ -463,7 +463,7 @@ impl Sidebar {
                             ui,
                             p,
                             &Row {
-                                icon: Some(crate::icons::book),
+                                icon: Some(crate::icons::book_fill),
                                 label: &name,
                                 count: open.then(|| b.chapters().to_string()),
                                 mark: Some(crate::icons::pin_fill),

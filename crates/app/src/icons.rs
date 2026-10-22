@@ -290,6 +290,16 @@ pub fn book(p: &Painter, r: Rect, c: Color32) {
     g.polyline(pts, false);
 }
 
+/// The book with its cover filled (a pinned book); the pages under it stay open.
+pub fn book_fill(p: &Painter, r: Rect, c: Color32) {
+    let g = Grid::new(p, r, c);
+    let mut cover = vec![(4.25, 15.25), (4.25, 4.75)];
+    cover.extend(Grid::arc(6.25, 4.75, 2.0, PI, PI + FRAC_PI_2));
+    cover.extend([(15.75, 2.75), (15.75, 15.25)]);
+    g.fill(&cover);
+    book(p, r, c);
+}
+
 pub fn close(p: &Painter, r: Rect, c: Color32) {
     let g = Grid::new(p, r, c);
     g.line(&[(5.5, 5.5), (14.5, 14.5)]);
