@@ -90,12 +90,15 @@ impl VerseMenu {
             .filter(|(_, l)| matches!(l, Line::Item { action: Some(_), .. }))
             .map(|(i, _)| i)
             .collect();
-        let (down, up, enter, esc) = ctx.input_mut(|i| {
+        let (down, up, enter, esc, b) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::NONE, Key::ArrowDown),
                 i.consume_key(Modifiers::NONE, Key::ArrowUp),
                 i.consume_key(Modifiers::NONE, Key::Enter),
                 i.consume_key(Modifiers::NONE, Key::Escape),
+                // Consume B so the global bookmark shortcut cannot bypass the menu's
+                // BookmarkVerses / highlight-run action with ToggleBookmark alone.
+                i.consume_key(Modifiers::NONE, Key::B),
             )
         });
         if esc {
@@ -112,6 +115,10 @@ impl VerseMenu {
         if enter && let Some(Line::Item { action: Some(a), .. }) = self.highlighted.and_then(|h| lines.get(h))
         {
             actions.push(a.clone());
+            return true;
+        }
+        if b {
+            actions.push(bookmark_menu(study, refs[0]).1);
             return true;
         }
 

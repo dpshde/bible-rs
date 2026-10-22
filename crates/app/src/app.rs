@@ -470,7 +470,12 @@ impl BibleApp {
         let typing = ctx.egui_wants_keyboard_input();
         // The book picker takes the single keys (arrows, return, escape) while it's open.
         let picker = crate::book_picker::is_open(ctx);
-        let overlay = self.palette.is_some() || self.settings_ui.is_some() || self.shortcuts_open;
+        // Verse menu owns B (and the other single keys) while open; otherwise the global
+        // bookmark binding would fire ToggleBookmark before the menu can push BookmarkVerses.
+        let overlay = self.palette.is_some()
+            || self.settings_ui.is_some()
+            || self.shortcuts_open
+            || self.verse_menu.is_some();
         // The rows of Settings › Shortcuts, with any chords chosen there.
         let bindings = crate::keymap::bindings(&self.settings.shortcuts);
         let anywhere = |a: &Action| matches!(a, Action::OpenPalette | Action::OpenSearch(_));
@@ -724,7 +729,14 @@ impl BibleApp {
                 self.apply_one(ctx, Action::EditNote(v));
             }
             Action::ToggleBookmark => {
+                // B / ⌘D / the menu's plain Bookmark row. When the verse is highlighted, bookmark
+                // the outer consecutive run — same as the menu's "Bookmark <range>" row — so B
+                // cannot bypass highlight_run and toast only the first selected verse.
                 let v = self.selection_or_location()[0];
+                if let Some(verses) = self.study.highlight_run_verses(v) {
+                    self.apply_one(ctx, Action::BookmarkVerses(verses));
+                    return;
+                }
                 match self.study.toggle_bookmark(v) {
                     Ok(true) => self.toast(ctx, format!("Bookmarked {v}")),
                     Ok(false) => self.toast(ctx, format!("Removed bookmark {v}")),

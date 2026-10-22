@@ -1664,4 +1664,56 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Mid-verse through later verses (Romans 5:3–5): one TextSpan is one highlight run.
+    #[test]
+    fn cross_verse_word_highlight_is_a_run() {
+        let dir = std::env::temp_dir().join(format!("bible-rs-cross-run-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut s = StudyStore::open(&path).unwrap();
+        let r = |n: u8| VerseRef::new(BookId(44), 5, n);
+        let t3 = "Not only that, but we also rejoice in our sufferings, because we know that suffering produces perseverance;";
+        let t4 = "perseverance, character; and character, hope.";
+        let t5 = "And hope does not disappoint us, because God has poured out his love into our hearts by the Holy Spirit, whom he has given us.";
+        let text = |v: VerseRef| -> Option<String> {
+            Some(match v.verse {
+                3 => t3.into(),
+                4 => t4.into(),
+                5 => t5.into(),
+                _ => return None,
+            })
+        };
+        let start = t3.find("but we also rejoice").unwrap();
+        let start = t3[..start].chars().count();
+        let span = TextSpan { first: r(3), start, last: r(5), end: usize::MAX };
+        assert_eq!(span.refs(), vec![r(3), r(4), r(5)]);
+        s.highlight_span(&span, Some(HighlightColor::Blue), text).unwrap();
+        assert_eq!(s.highlight_run(r(3)), Some((r(3), r(5))));
+        assert_eq!(s.highlight_run(r(4)), Some((r(3), r(5))));
+        assert_eq!(s.highlight_run(r(5)), Some((r(3), r(5))));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Same span against bundled BSB text (offsets and verse boundaries as the reader uses).
+    #[test]
+    fn bsb_romans_5_word_span_is_a_run() {
+        let t = crate::bundled::load("bsb").unwrap();
+        let r = |n: u8| VerseRef::new(BookId(44), 5, n);
+        let v3 = t.find(r(3)).unwrap();
+        let start_byte = v3.text.find("but we also rejoice").expect("phrase in BSB Rom 5:3");
+        let start = v3.text[..start_byte].chars().count();
+        let span = TextSpan { first: r(3), start, last: r(5), end: usize::MAX };
+        assert_eq!(span.refs(), vec![r(3), r(4), r(5)]);
+        let dir = std::env::temp_dir().join(format!("bible-rs-bsb-rom5-{}", std::process::id()));
+        let path = dir.join("study.sqlite");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut s = StudyStore::open(&path).unwrap();
+        let text = |v: VerseRef| t.find(v).map(|vv| vv.text.to_string());
+        s.highlight_span(&span, Some(HighlightColor::Blue), text).unwrap();
+        assert!(s.is_highlighted(r(3)) && s.is_highlighted(r(4)) && s.is_highlighted(r(5)));
+        assert_eq!(s.highlight_run(r(3)), Some((r(3), r(5))));
+        assert_eq!(s.highlight_run_verses(r(4)).unwrap(), vec![r(3), r(4), r(5)]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

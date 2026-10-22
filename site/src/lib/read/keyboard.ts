@@ -256,7 +256,10 @@ export function handleKey(app: ReadApp, e: KeyboardEvent): boolean {
 	for (const { c, a } of bindings) if (anywhere(a) && matches(e, c)) return go(a);
 	if (only(',', { cmd: true })) return go({ type: 'openSettings', tab: 'reading' });
 	if (only('/', { cmd: true })) return go({ type: 'showShortcuts' });
-	if (app.palette || app.settingsTab || app.shortcuts || app.share || app.importSheet) return false;
+	// Verse menu owns its row shortcuts (B bookmarks the highlight run); don't let the global
+	// binding fire toggleBookmark underneath it.
+	if (app.palette || app.settingsTab || app.shortcuts || app.share || app.importSheet || app.verseMenu)
+		return false;
 
 	for (const { c, a } of bindings) {
 		if (isCommand(c) && !anywhere(a) && a.type !== 'copy' && matches(e, c)) return go(a);
