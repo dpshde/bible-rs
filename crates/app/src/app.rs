@@ -539,6 +539,8 @@ impl BibleApp {
         // The book picker takes the single keys (arrows, return, escape) while it's open.
         let picker = crate::book_picker::is_open(ctx);
         let overlay = self.palette.is_some() || self.settings_ui.is_some() || self.shortcuts_open;
+        // The verse menu takes the arrows and escape.
+        let menu = self.verse_menu.is_some();
         // The rows of Settings › Shortcuts, with any chords chosen there.
         let bindings = crate::keymap::bindings(&self.settings.shortcuts);
         let anywhere = |a: &Action| matches!(a, Action::OpenPalette | Action::OpenSearch(_));
@@ -605,17 +607,19 @@ impl BibleApp {
             if picker {
                 return;
             }
-            key(Modifiers::NONE, Key::ArrowLeft, Action::PrevChapter);
-            key(Modifiers::NONE, Key::ArrowRight, Action::NextChapter);
-            key(Modifiers::NONE, Key::ArrowDown, Action::ScrollLines(3.0));
-            key(Modifiers::NONE, Key::ArrowUp, Action::ScrollLines(-3.0));
+            if !menu {
+                key(Modifiers::NONE, Key::ArrowLeft, Action::PrevChapter);
+                key(Modifiers::NONE, Key::ArrowRight, Action::NextChapter);
+                key(Modifiers::NONE, Key::ArrowDown, Action::ScrollLines(3.0));
+                key(Modifiers::NONE, Key::ArrowUp, Action::ScrollLines(-3.0));
+                key(Modifiers::NONE, Key::Escape, Action::ClearSelection);
+            }
             key(Modifiers::NONE, Key::PageDown, Action::ScrollPages(1.0));
             key(Modifiers::NONE, Key::PageUp, Action::ScrollPages(-1.0));
             key(Modifiers::SHIFT, Key::Space, Action::ScrollPages(-1.0));
             key(Modifiers::NONE, Key::Space, Action::ScrollPages(1.0));
             key(Modifiers::NONE, Key::J, Action::SelectNext);
             key(Modifiers::NONE, Key::K, Action::SelectPrev);
-            key(Modifiers::NONE, Key::Escape, Action::ClearSelection);
             key(Modifiers::NONE, Key::Slash, Action::OpenSearch(None));
             key(Modifiers::SHIFT, Key::Questionmark, Action::ShowShortcuts);
             key(Modifiers::NONE, Key::Questionmark, Action::ShowShortcuts);
@@ -850,6 +854,15 @@ impl BibleApp {
             Action::OpenVerseMenu(pos) => {
                 if !self.reader.selected_refs().is_empty() {
                     self.verse_menu = Some(crate::verse_menu::VerseMenu::new(pos));
+                }
+            }
+            Action::OpenIn(id) => {
+                // Words chosen in a parallel column go in that column's translation, as copying does.
+                let translation =
+                    self.reader.text_span().map_or(self.settings.translation.as_str(), |(_, t)| t);
+                let passage = bible_core::open_in::Passage::from_refs(&self.reader.selected_refs());
+                if let Some(url) = passage.and_then(|p| bible_core::open_in::url(id, p, translation)) {
+                    open_url(&url);
                 }
             }
             Action::ShareImage => {

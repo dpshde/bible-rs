@@ -74,6 +74,8 @@ pub enum Action {
     Copy,
     /// Open the verse menu at a point (a right-click on the selection).
     OpenVerseMenu(eframe::egui::Pos2),
+    /// Open the selection in another Bible app or site (an id from `bible_core::open_in::APPS`).
+    OpenIn(&'static str),
     /// Make an image of the selected verses to share.
     ShareImage,
     Compare,
