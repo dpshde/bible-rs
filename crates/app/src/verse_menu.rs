@@ -29,15 +29,38 @@ fn open_in_width(label: f32) -> f32 {
     (2.0 * PADDING_X + row).clamp(OPEN_IN_MIN_WIDTH, OPEN_IN_MAX_WIDTH)
 }
 
-/// An app row: the globe, then the name, cut short with "…" before the star slot.
-fn paint_app_row(painter: &Painter, p: &Palette, r: Rect, name: &str, lit: bool, pressed: bool) {
+/// The globe's colour for `app`: mostly the muted icon ink, with a hint of the app's brand colour.
+/// A brand too dark to see on a dark menu is lifted toward white first.
+fn globe_tint(p: &Palette, app: &App) -> Color32 {
+    let [_, r, g, b] = app.brand.to_be_bytes();
+    let lum = |c: Color32| (0.2126 * c.r() as f32 + 0.7152 * c.g() as f32 + 0.0722 * c.b() as f32) / 255.0;
+    let mut brand = Color32::from_rgb(r, g, b);
+    if lum(p.surface) < 0.5 && lum(brand) < 0.35 {
+        brand = mix(brand, Color32::WHITE, 0.45);
+    }
+    mix(p.ink_2, brand, GLOBE_BRAND_SHARE)
+}
+
+/// How much of the brand colour goes into a globe; the rest is the muted icon ink.
+const GLOBE_BRAND_SHARE: f32 = 0.4;
+
+/// `a` moved `t` of the way to `b`.
+fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
+    let ch = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color32::from_rgb(ch(a.r(), b.r()), ch(a.g(), b.g()), ch(a.b(), b.b()))
+}
+
+/// An app row: the globe, then the name, cut short with "…" before the star slot. On the lit row
+/// the globe takes the selected foreground like the label.
+fn paint_app_row(painter: &Painter, p: &Palette, r: Rect, app: &App, lit: bool, pressed: bool) {
+    let name = app.name;
     if lit {
         painter.rect_filled(r, tokens::ITEM_RADIUS, p.accent);
         if pressed {
             painter.rect_filled(r, tokens::ITEM_RADIUS, Color32::from_black_alpha(18));
         }
     }
-    let (ink, ink2) = if lit { (p.on_accent, p.on_accent) } else { (p.ink, p.ink_2) };
+    let (ink, ink2) = if lit { (p.on_accent, p.on_accent) } else { (p.ink, globe_tint(p, app)) };
     let cy = r.center().y;
     let glyph =
         Rect::from_min_size(pos2(menu::text_left(r), cy - icon::MENU / 2.0), vec2(icon::MENU, icon::MENU));
@@ -357,7 +380,7 @@ impl VerseMenu {
                             }
                             let lit = self.highlighted == Some(i);
                             let pressed = resp.is_pointer_button_down_on();
-                            paint_app_row(ui.painter(), p, r, app.name, lit, pressed);
+                            paint_app_row(ui.painter(), p, r, app, lit, pressed);
                             // Its filled star unstars it (the row goes) without opening.
                             let star = star_toggle(ui, p, r, app.id, true, resp.hovered() || lit, lit);
                             if star.clicked() {
@@ -469,7 +492,7 @@ fn open_in_submenu(
                     *highlighted = Some(k);
                 }
                 let lit = *highlighted == Some(k);
-                paint_app_row(ui.painter(), p, r, app.name, lit, resp.is_pointer_button_down_on());
+                paint_app_row(ui.painter(), p, r, app, lit, resp.is_pointer_button_down_on());
                 let is_starred = starred.iter().any(|s| s == app.id);
                 let star =
                     star_toggle(ui, p, r, app.id, is_starred, is_starred || resp.hovered() || lit, lit);
@@ -546,6 +569,17 @@ mod tests {
         // Short labels keep a usable width; very long ones stop at the max (and are cut with "…").
         assert_eq!(open_in_width(10.0), OPEN_IN_MIN_WIDTH);
         assert_eq!(open_in_width(1000.0), OPEN_IN_MAX_WIDTH);
+    }
+
+    #[test]
+    fn globes_take_only_a_hint_of_the_brand() {
+        let gray = Color32::from_rgb(0x6B, 0x6B, 0x6B);
+        let red = Color32::from_rgb(0xFF, 0x00, 0x00);
+        let hint = mix(gray, red, GLOBE_BRAND_SHARE);
+        // Mostly the muted ink: no channel strays more than half the way to the brand colour.
+        assert!(hint.r() < 0x6B + (0xFF - 0x6B) / 2 && hint.g() > 0x6B / 2, "{hint:?}");
+        assert_eq!(mix(gray, red, 0.0), gray);
+        assert_eq!(mix(gray, red, 1.0), red);
     }
 
     #[test]

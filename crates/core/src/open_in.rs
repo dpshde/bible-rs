@@ -6,25 +6,27 @@
 
 use crate::books::{BookId, FIRST_NT_BOOK, VerseRef};
 
-/// One destination: its id (route.bible's adapter id) and the label shown in the menu.
+/// One destination: its id (route.bible's adapter id), the label shown in the menu, and its brand
+/// colour as `0xRRGGBB` (the menu tints its globe with a little of it; no logos).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct App {
     pub id: &'static str,
     pub name: &'static str,
+    pub brand: u32,
 }
 
 /// The destinations, in menu order.
 pub const APPS: [App; 10] = [
-    App { id: "bible-app", name: "Bible App" },
-    App { id: "literal-word", name: "Literal Word" },
-    App { id: "verse-notes", name: "Verse Notes" },
-    App { id: "blue-letter-bible", name: "Blue Letter Bible" },
-    App { id: "step-bible", name: "STEP Bible" },
-    App { id: "logos", name: "Logos" },
-    App { id: "desiring-god", name: "Desiring God" },
-    App { id: "enduring-word", name: "Enduring Word" },
-    App { id: "tgc-commentary", name: "The Gospel Coalition" },
-    App { id: "chatgpt", name: "ChatGPT" },
+    App { id: "bible-app", name: "Bible App", brand: 0xFF3D4D }, // bible.com CSS --color-brand-red
+    App { id: "literal-word", name: "Literal Word", brand: 0x0C2365 }, // app.literalword.com header navy
+    App { id: "verse-notes", name: "Verse Notes", brand: 0x400561 }, // versenotes.org mask-icon colour
+    App { id: "blue-letter-bible", name: "Blue Letter Bible", brand: 0x516D94 }, // blueletterbible.org header blue
+    App { id: "step-bible", name: "STEP Bible", brand: 0x17758F },               // stepbible.org theme-color
+    App { id: "logos", name: "Logos", brand: 0xD80027 },                         // logos.com brand red
+    App { id: "desiring-god", name: "Desiring God", brand: 0xC6000E },           // desiringgod.org CSS red
+    App { id: "enduring-word", name: "Enduring Word", brand: 0xF76A0C },         // enduringword.com orange
+    App { id: "tgc-commentary", name: "The Gospel Coalition", brand: 0x79AE4A }, // thegospelcoalition.org theme green
+    App { id: "chatgpt", name: "ChatGPT", brand: 0x10A37F },                     // ChatGPT green
 ];
 
 /// The starred apps, in the order they were starred. Ids not in [`APPS`] are left out.
