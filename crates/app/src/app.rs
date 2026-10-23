@@ -545,7 +545,7 @@ impl BibleApp {
         // The verse menu takes the arrows and escape.
         let menu = self.verse_menu.is_some();
         // The rows of Settings › Shortcuts, with any chords chosen there.
-        let bindings = crate::keymap::bindings(&self.settings.shortcuts);
+        let bindings = shortcut_bindings(&self.settings.shortcuts, menu);
         let anywhere = |a: &Action| matches!(a, Action::OpenPalette | Action::OpenSearch(_));
         ctx.input_mut(|i| {
             let cmd = Modifiers::COMMAND;
@@ -2900,6 +2900,28 @@ fn open_in_translation(abbrev: impl Fn(&str) -> Option<String>, reader: &str, sp
     abbrev(id).unwrap_or_else(|| id.to_string())
 }
 
+/// The rows of Settings › Shortcuts, with any chords chosen there. While the verse menu is open,
+/// those on its keys ([`menu_key`]) wait, so the menu gets them first.
+fn shortcut_bindings(
+    overrides: &std::collections::BTreeMap<String, String>,
+    menu_open: bool,
+) -> Vec<(crate::keymap::Chord, Action)> {
+    let mut bindings = crate::keymap::bindings(overrides);
+    if menu_open {
+        bindings.retain(|(c, _)| !menu_key(c));
+    }
+    bindings
+}
+
+/// A plain arrow, Return or Escape: the keys the verse menu and its Open in › submenu move with.
+fn menu_key(c: &crate::keymap::Chord) -> bool {
+    c.modifiers() == Modifiers::NONE
+        && matches!(
+            c.key,
+            Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight | Key::Enter | Key::Escape
+        )
+}
+
 #[cfg(test)]
 mod open_in_tests {
     use super::*;
@@ -2933,6 +2955,26 @@ mod open_in_tests {
         );
         // An entry no longer in the library falls back to its id.
         assert_eq!(open_in_translation(abbrev, "gone", None), "gone");
+    }
+
+    #[test]
+    fn shortcuts_leave_the_open_menus_keys_alone() {
+        let chord = |key, shift| crate::keymap::Chord { ctrl: false, alt: false, shift, cmd: false, key };
+        for k in [Key::ArrowUp, Key::ArrowDown, Key::ArrowLeft, Key::ArrowRight, Key::Enter, Key::Escape] {
+            assert!(menu_key(&chord(k, false)), "{k:?}");
+        }
+        // Other keys and modified arrows stay with their shortcuts.
+        assert!(!menu_key(&chord(Key::N, false)));
+        assert!(!menu_key(&chord(Key::ArrowDown, true)));
+        // Note moved onto ↓ opens the note editor from the reader, but waits while the menu is open.
+        let overrides = std::collections::BTreeMap::from([("note".to_string(), "ArrowDown".to_string())]);
+        let on_down = |menu_open| {
+            shortcut_bindings(&overrides, menu_open).into_iter().any(|(c, a)| {
+                c.key == Key::ArrowDown && c.modifiers() == Modifiers::NONE && a == Action::EditSelectedNote
+            })
+        };
+        assert!(on_down(false));
+        assert!(!on_down(true));
     }
 }
 
