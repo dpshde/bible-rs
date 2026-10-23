@@ -11,7 +11,7 @@ use bible_core::search::{Query, Scope};
 use bible_core::study::{HighlightColor, StudyStore};
 use eframe::egui::text::{LayoutJob, TextFormat, TextWrapping};
 use eframe::egui::{
-    self, Align, Align2, Color32, FontId, Key, Painter, Pos2, Rect, Response, ScrollArea, Sense, Shape,
+    self, Align, Align2, Color32, FontId, Id, Key, Painter, Pos2, Rect, Response, ScrollArea, Sense, Shape,
     Stroke, Ui, pos2, vec2,
 };
 
@@ -459,7 +459,8 @@ impl Sidebar {
                     for &b in env.pinned.iter().filter(|b| matches(**b)) {
                         let name = book_name(b);
                         let open = self.pinned_expanded == Some(b) && b.chapters() > 1;
-                        let resp = row(
+                        let marked = self.activity.1.books.get(&b);
+                        let mut resp = row(
                             ui,
                             p,
                             &Row {
@@ -467,9 +468,13 @@ impl Sidebar {
                                 label: &name,
                                 count: open.then(|| b.chapters().to_string()),
                                 pin_lane: true,
+                                marks: marked.map(|m| &m.marks[..]),
                                 ..Row::default()
                             },
                         );
+                        if let Some(m) = marked {
+                            resp = resp.on_hover_text(m.summary());
+                        }
                         let pin = pin_toggle(ui, p, resp.rect, b, true, true);
                         if pin.clicked() {
                             actions.push(Action::UnpinBook(b));
@@ -494,7 +499,15 @@ impl Sidebar {
                         });
                         if open {
                             let before = actions.len();
-                            chapter_grid(ui, p, b, env.location.0, &self.activity.1.chapters, actions);
+                            chapter_grid(
+                                ui,
+                                p,
+                                ui.id().with(("pinned-chapters", b)),
+                                b,
+                                env.location.0,
+                                &self.activity.1.chapters,
+                                actions,
+                            );
                             if actions.len() > before {
                                 self.revealed = Some(b);
                             }
@@ -580,7 +593,15 @@ impl Sidebar {
                                 }
                             }
                             if self.expanded == Some(b) && b.chapters() > 1 {
-                                chapter_grid(ui, p, b, env.location.0, &self.activity.1.chapters, actions);
+                                chapter_grid(
+                                    ui,
+                                    p,
+                                    ui.id().with(("chapters", b)),
+                                    b,
+                                    env.location.0,
+                                    &self.activity.1.chapters,
+                                    actions,
+                                );
                             }
                         }
                     }
@@ -1130,7 +1151,7 @@ struct Row<'a> {
     /// while the pointer is on the pin.
     pin_lane: bool,
     selected: bool,
-    /// A book's highlights and notes, as a small ring in the icon lane.
+    /// A book's highlights and notes, as a small ring in the icon lane (in place of any icon).
     marks: Option<&'a [Option<HighlightColor>]>,
 }
 
@@ -1145,16 +1166,19 @@ fn row(ui: &mut Ui, p: &Palette, r: &Row<'_>) -> Response {
     let painter = ui.painter();
     let cy = rect.center().y;
     let mut x = rect.left() + ROW_PAD + r.indent;
-    if let Some(icon) = r.icon {
+    // A ring takes the icon's place (a pinned book with highlights or notes).
+    if let Some(marks) = r.marks.filter(|m| !m.is_empty()) {
+        let lane = pos2(rect.left() + ROW_PAD + ICON_LANE / 2.0, cy);
+        paint_ring(painter, lane, p, &BOOK_RING, marks);
+    } else if let Some(icon) = r.icon {
         icon(
             painter,
             Rect::from_min_size(pos2(x, cy - ICON_LANE / 2.0), vec2(ICON_LANE, ICON_LANE)),
             r.icon_color.unwrap_or(p.accent),
         );
+    }
+    if r.icon.is_some() {
         x += ICON_LANE + GAP;
-    } else if let Some(marks) = r.marks.filter(|m| !m.is_empty()) {
-        let lane = pos2(rect.left() + ROW_PAD + ICON_LANE / 2.0, cy);
-        paint_ring(painter, lane, p, &BOOK_RING, marks);
     }
     let (font, color) =
         if r.selected { (text::UI_STRONG.font(), p.accent) } else { (text::UI.font(), p.ink) };
@@ -1549,10 +1573,12 @@ fn paint_ring(
 
 /// The open book's chapters: 24 pt chips, the current one solid accent. A chapter with
 /// highlights or notes gets a segmented ring (one segment per highlight or note, in its colour) and
-/// its number on a disc tinted with its main highlight colour.
+/// its number on a disc tinted with its main highlight colour. The chips' ids come from `id`: a
+/// pinned book can show its chapters twice (under its pinned row and in its testament).
 fn chapter_grid(
     ui: &mut Ui,
     p: &Palette,
+    id: Id,
     book: BookId,
     current: ChapterIdx,
     activity: &HashMap<ChapterIdx, Marks>,
@@ -1573,7 +1599,7 @@ fn chapter_grid(
             vec2(CHIP, CHIP),
         );
         let idx = ChapterIdx::new(book, (i + 1) as u8).unwrap();
-        let resp = ui.interact(chip, ui.id().with(("chapter", book.0, i)), Sense::click());
+        let resp = ui.interact(chip, id.with(i), Sense::click());
         let here = idx == current;
         let marks = activity.get(&idx).filter(|m| !m.is_empty());
         let painter = ui.painter();

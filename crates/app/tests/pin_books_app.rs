@@ -1,11 +1,14 @@
 //! Pinning books in the running app: right-clicking a book in a testament pins it above the
 //! testaments, the pinned row opens the book's chapters right under it (the testaments stay as
-//! they are), and its pin or a right-click unpins it. Its own test binary because it sets `BIBLE_RS_OFFSCREEN` (see `book_picker_app.rs`).
+//! they are), and its pin or a right-click unpins it. Pinning the book being read shows its
+//! chapters twice, and both grids take clicks; a pinned book's highlights show as its ring. Its
+//! own test binary because it sets `BIBLE_RS_OFFSCREEN` (see `book_picker_app.rs`).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bible_core::books::{BookId, ChapterIdx};
+use bible_core::books::{BookId, ChapterIdx, VerseRef};
+use bible_core::study::HighlightColor;
 use bible_rs::app::{BibleApp, Startup, initialize, online_counter};
 use bible_rs::theme;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2, Shape};
@@ -65,6 +68,22 @@ fn closed_in(h: &Harness<'_, BibleApp>, area: egui::Rect, filled: bool) -> usize
 
 fn fills_in(h: &Harness<'_, BibleApp>, area: egui::Rect) -> usize {
     closed_in(h, area, true)
+}
+
+/// Rings (a stroked circle: a book's highlights and notes, all one colour) centred in `area`.
+fn rings_in(h: &Harness<'_, BibleApp>, area: egui::Rect) -> usize {
+    fn walk(shape: &Shape, area: egui::Rect, n: &mut usize) {
+        match shape {
+            Shape::Vec(v) => v.iter().for_each(|s| walk(s, area, n)),
+            Shape::Circle(c) if c.stroke.width > 0.0 && area.contains(c.center) => *n += 1,
+            _ => {}
+        }
+    }
+    let mut n = 0;
+    for c in &h.output().shapes {
+        walk(&c.shape, area, &mut n);
+    }
+    n
 }
 
 fn one(h: &Harness<'_, BibleApp>, label: &str) -> Pos2 {
@@ -221,5 +240,42 @@ fn a_pinned_book_sits_above_the_testaments() {
     h.event(Event::PointerMoved(egui::pos2(700.0, 400.0)));
     h.run_steps(4);
     assert!(fills_in(&h, lane(marks[1].y)) >= 3, "a filled pin on the testament row");
+
+    // Back in John 3 with a highlight there, pin John: the book being read. Its pinned row shows
+    // John's ring where the filled book goes, like its row in the New Testament.
+    h.state_mut().study.set_highlight(VerseRef::new(JOHN, 3, 16), Some(HighlightColor::Green)).unwrap();
+    h.state_mut().reader.jump(john3, None, false);
+    h.run_steps(6);
+    let john_row = *find(&h, "John").iter().find(|p| p.y > one(&h, "Old Testament").y).unwrap();
+    click(&mut h, pin_at(john_row.y), PointerButton::Primary);
+    assert_eq!(h.state().settings.pinned(), [MARK, JOHN]);
+    let old = one(&h, "Old Testament");
+    let john = find(&h, "John");
+    assert_eq!(john.len(), 2, "{john:?}");
+    assert!(john[0].y < old.y && john[1].y > old.y);
+    assert_eq!(rings_in(&h, left(john[1].y)), 1, "a ring on the testament row");
+    assert_eq!(rings_in(&h, left(john[0].y)), 1, "and on the pinned row");
+    assert_eq!(fills_in(&h, left(john[0].y)), 0, "the ring takes the filled book's place");
+    assert!(fills_in(&h, left(find(&h, "Mark")[0].y)) >= 1, "unmarked Mark keeps its filled book");
+
+    // Opening the pinned row puts a second grid of John's chapters on screen; each takes clicks.
+    click(&mut h, john[0], PointerButton::Primary);
+    let old = one(&h, "Old Testament");
+    let chip = |h: &Harness<'_, BibleApp>, n: u8, pinned: bool| {
+        let found: Vec<Pos2> = find(h, &n.to_string())
+            .into_iter()
+            .filter(|c| c.x < 300.0 && (c.y < old.y) == pinned && c.y > john[0].y)
+            .collect();
+        assert_eq!(found.len(), 1, "chapter {n} (pinned: {pinned}) at {found:?}");
+        found[0]
+    };
+    let pinned_5 = chip(&h, 5, true);
+    let testament_7 = chip(&h, 7, false);
+    click(&mut h, pinned_5, PointerButton::Primary);
+    assert_eq!(h.state().reader.location.0, ChapterIdx::new(JOHN, 5).unwrap(), "the pinned grid");
+    click(&mut h, testament_7, PointerButton::Primary);
+    assert_eq!(h.state().reader.location.0, ChapterIdx::new(JOHN, 7).unwrap(), "the testament's grid");
+    click(&mut h, pinned_5, PointerButton::Primary);
+    assert_eq!(h.state().reader.location.0, ChapterIdx::new(JOHN, 5).unwrap(), "the pinned grid again");
     let _ = std::fs::remove_dir_all(&dir);
 }
