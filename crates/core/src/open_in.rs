@@ -27,6 +27,36 @@ pub const APPS: [App; 10] = [
     App { id: "chatgpt", name: "ChatGPT" },
 ];
 
+/// The starred apps, in the order they were starred. Ids not in [`APPS`] are left out.
+pub fn starred(ids: &[String]) -> Vec<App> {
+    let mut out: Vec<App> = Vec::new();
+    for id in ids {
+        if let Some(app) = APPS.iter().find(|a| a.id == id)
+            && !out.contains(app)
+        {
+            out.push(*app);
+        }
+    }
+    out
+}
+
+/// The submenu's order: the starred apps first, then the rest in [`APPS`] order.
+pub fn menu_order(ids: &[String]) -> Vec<App> {
+    let mut out = starred(ids);
+    out.extend(APPS.iter().filter(|a| !ids.iter().any(|id| id == a.id)));
+    out
+}
+
+/// Stars `id`, or unstars it when it already is. New stars go last.
+pub fn toggle_star(ids: &mut Vec<String>, id: &str) {
+    match ids.iter().position(|s| s == id) {
+        Some(i) => {
+            ids.remove(i);
+        }
+        None => ids.push(id.to_string()),
+    }
+}
+
 /// A same-chapter passage: one verse or an inclusive range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Passage {
@@ -397,6 +427,37 @@ mod tests {
         assert_eq!(url("blue-letter-bible", p, "bsb").unwrap(), "https://www.blueletterbible.org/jhn/3/16/");
         assert_eq!(url("literal-word", p, "bsb").unwrap(), "https://app.literalword.com/esv/43/3/16");
         assert!(url("step-bible", p, "bsb").unwrap().contains("version%3DESV"));
+    }
+
+    #[test]
+    fn starred_apps_come_first_in_star_order() {
+        let mut ids = Vec::new();
+        toggle_star(&mut ids, "logos");
+        toggle_star(&mut ids, "bible-app");
+        toggle_star(&mut ids, "enduring-word");
+        toggle_star(&mut ids, "bible-app");
+        assert_eq!(ids, ["logos", "enduring-word"]);
+        let names = |apps: Vec<App>| apps.iter().map(|a| a.id).collect::<Vec<_>>();
+        // Unknown and repeated ids are left out.
+        let saved: Vec<String> =
+            ["enduring-word", "no-such-app", "logos", "enduring-word"].map(String::from).into();
+        assert_eq!(names(starred(&saved)), ["enduring-word", "logos"]);
+        assert_eq!(
+            names(menu_order(&saved)),
+            [
+                "enduring-word",
+                "logos",
+                "bible-app",
+                "literal-word",
+                "verse-notes",
+                "blue-letter-bible",
+                "step-bible",
+                "desiring-god",
+                "tgc-commentary",
+                "chatgpt",
+            ]
+        );
+        assert_eq!(menu_order(&[]), APPS.to_vec());
     }
 
     #[test]

@@ -76,6 +76,8 @@ pub enum Action {
     OpenVerseMenu(eframe::egui::Pos2),
     /// Open the selection in another Bible app or site (an id from `bible_core::open_in::APPS`).
     OpenIn(&'static str),
+    /// Star or unstar an Open in › app: starred ones come first and sit in the verse menu itself.
+    ToggleOpenInStar(&'static str),
     /// Make an image of the selected verses to share.
     ShareImage,
     Compare,

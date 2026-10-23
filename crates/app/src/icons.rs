@@ -280,6 +280,28 @@ pub fn bookmark(p: &Painter, r: Rect, c: Color32, filled: bool) {
     g.closed(&pts);
 }
 
+/// A five-pointed star; `filled` for a starred item.
+pub fn star(p: &Painter, r: Rect, c: Color32, filled: bool) {
+    let g = Grid::new(p, r, c);
+    let (cx, cy, outer, inner) = (10.0_f32, 10.6_f32, 7.25_f32, 3.0_f32);
+    let pts: Vec<(f32, f32)> = (0..10)
+        .map(|i| {
+            let a = -FRAC_PI_2 + i as f32 * PI / 5.0;
+            let rad = if i % 2 == 0 { outer } else { inner };
+            (cx + rad * a.cos(), cy + rad * a.sin())
+        })
+        .collect();
+    if filled {
+        // Not convex: the inner pentagon, then a triangle for each point.
+        let inner_pts: Vec<(f32, f32)> = pts.iter().skip(1).step_by(2).copied().collect();
+        g.fill(&inner_pts);
+        for i in (0..10).step_by(2) {
+            g.fill(&[pts[(i + 9) % 10], pts[i], pts[i + 1]]);
+        }
+    }
+    g.closed(&pts);
+}
+
 pub fn highlighter(p: &Painter, r: Rect, c: Color32) {
     let g = Grid::new(p, r, c);
     g.closed(&[(11.75, 3.75), (16.25, 8.25), (8.75, 15.75), (4.25, 15.75), (4.25, 11.25)]);

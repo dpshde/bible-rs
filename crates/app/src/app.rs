@@ -59,6 +59,8 @@ pub struct Settings {
     pub share: crate::share_sheet::ShareOptions,
     /// Remind about the day's plan reading at 7:00 while the app is open.
     pub plan_reminder: bool,
+    /// Open in › apps starred for quick access, by id, in star order.
+    pub open_in_starred: Vec<String>,
     /// The first-launch screens are done. Settings saved before they existed count as done.
     #[serde(default = "yes")]
     pub onboarded: bool,
@@ -86,6 +88,7 @@ impl Default for Settings {
             verse: 1,
             whole_words: false,
             plan_reminder: false,
+            open_in_starred: Vec::new(),
             accent: theme::Accent::Ink,
             toolbar_translation: true,
             sidebar_attached: false,
@@ -864,6 +867,10 @@ impl BibleApp {
                 if let Some(url) = passage.and_then(|p| bible_core::open_in::url(id, p, translation)) {
                     open_url(&url);
                 }
+            }
+            Action::ToggleOpenInStar(id) => {
+                bible_core::open_in::toggle_star(&mut self.settings.open_in_starred, id);
+                self.settings.save(&mut self.study);
             }
             Action::ShareImage => {
                 let refs = self.reader.selected_refs();

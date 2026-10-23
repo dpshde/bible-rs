@@ -2,7 +2,7 @@
 //! note, bookmark, copy, share, compare, parallel and Open in ›.
 
 use bible_core::VerseRef;
-use bible_core::open_in::{APPS, Passage};
+use bible_core::open_in::{self, App, Passage};
 use bible_core::study::{HighlightColor, StudyStore};
 use eframe::egui::{
     self, Align2, Color32, Key, Modifiers, Order, Painter, Pos2, Rect, Sense, Stroke, pos2, vec2,
@@ -11,7 +11,7 @@ use eframe::egui::{
 use crate::actions::Action;
 use crate::icons;
 use crate::menu::{self, ITEM_HEIGHT, PADDING_X, PADDING_Y, SEPARATOR_HEIGHT};
-use crate::theme::{Palette, menu as tokens, text};
+use crate::theme::{Palette, icon, menu as tokens, text};
 use crate::widgets::IconFn;
 
 const WIDTH: f32 = 264.0;
@@ -28,9 +28,9 @@ enum Line {
         action: Option<Action>,
     },
     /// Shows the Open in › submenu; off for a selection across chapters.
-    OpenIn {
-        enabled: bool,
-    },
+    OpenIn(bool),
+    /// A starred Open in › app, right under Open in ›: opens straight away.
+    Starred(App),
     Separator,
 }
 
@@ -41,11 +41,44 @@ pub struct VerseMenu {
     opened: bool,
     /// The Open in › submenu, while open: the app under the keyboard (and the pointer).
     open_in: Option<Option<usize>>,
+    /// How far the rows are scrolled when the menu is taller than the window (many stars).
+    scroll_y: f32,
+}
+
+/// Above the rows: padding, the "Highlight" header, the swatches and their separator.
+const ROWS_TOP: f32 = PADDING_Y + tokens::HEADER_HEIGHT + SWATCHES_HEIGHT + SEPARATOR_HEIGHT;
+
+fn line_height(l: &Line) -> f32 {
+    if matches!(l, Line::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT }
+}
+
+/// The menu's top-left and visible height: it keeps 8 pt from the window's edges and, when its
+/// `content` is taller than that, shows what fits and scrolls.
+fn frame(at: Pos2, content: f32, screen: Rect) -> (Pos2, f32) {
+    let height = content.min(screen.height() - 16.0).max(0.0);
+    let pos = pos2(
+        at.x.min(screen.right() - WIDTH - 8.0).max(screen.left() + 8.0),
+        at.y.min(screen.bottom() - height - 8.0).max(screen.top() + 8.0),
+    );
+    (pos, height)
+}
+
+/// `scroll` moved just enough to show the row from `top` to `bottom` (content coordinates) in a
+/// `view` tall menu, kept within `0..=content - view`.
+fn scroll_to_show(scroll: f32, top: f32, bottom: f32, view: f32, content: f32) -> f32 {
+    let s = if top < scroll + ROWS_TOP {
+        top - ROWS_TOP
+    } else if bottom > scroll + view - PADDING_Y {
+        bottom - view + PADDING_Y
+    } else {
+        scroll
+    };
+    s.clamp(0.0, (content - view).max(0.0))
 }
 
 impl VerseMenu {
     pub fn new(pos: Pos2) -> Self {
-        Self { pos, highlighted: None, opened: false, open_in: None }
+        Self { pos, highlighted: None, opened: false, open_in: None, scroll_y: 0.0 }
     }
 
     /// Starts with the first item highlighted, as when opened from the keyboard.
@@ -54,7 +87,7 @@ impl VerseMenu {
         self
     }
 
-    fn lines(study: &StudyStore, refs: &[VerseRef]) -> Vec<Line> {
+    fn lines(study: &StudyStore, refs: &[VerseRef], starred: &[String]) -> Vec<Line> {
         let first = refs[0];
         let item = |icon: IconFn, label: &str, shortcut: &'static str, action: Option<Action>| Line::Item {
             icon,
@@ -62,7 +95,8 @@ impl VerseMenu {
             shortcut,
             action,
         };
-        vec![
+        let open_in = Passage::from_refs(refs).is_some();
+        let mut lines = vec![
             item(
                 icons::note,
                 if study.note(first).is_some() { "Edit Note…" } else { "Add Note…" },
@@ -82,10 +116,14 @@ impl VerseMenu {
             Line::Separator,
             item(icons::compare, "Compare Translations", "C", Some(Action::Compare)),
             item(icons::columns, "Open in Parallel", "⇧⌘P", Some(Action::ToggleParallel)),
-            Line::OpenIn { enabled: Passage::from_refs(refs).is_some() },
-            Line::Separator,
-            item(icons::text_cursor, "Select Verse Range", "⇧-click", None),
-        ]
+            Line::OpenIn(open_in),
+        ];
+        // Starred apps sit right under Open in ›, in star order.
+        if open_in {
+            lines.extend(open_in::starred(starred).into_iter().map(Line::Starred));
+        }
+        lines.extend([Line::Separator, item(icons::text_cursor, "Select Verse Range", "⇧-click", None)]);
+        lines
     }
 
     /// Returns `true` when the menu should close.
@@ -104,11 +142,14 @@ impl VerseMenu {
         if refs.is_empty() {
             return true;
         }
-        let lines = Self::lines(study, refs);
+        let lines = Self::lines(study, refs, &settings.open_in_starred);
+        let order = open_in::menu_order(&settings.open_in_starred);
         let enabled: Vec<usize> = lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| matches!(l, Line::Item { action: Some(_), .. } | Line::OpenIn { enabled: true }))
+            .filter(|(_, l)| {
+                matches!(l, Line::Item { action: Some(_), .. } | Line::OpenIn(true) | Line::Starred(_))
+            })
             .map(|(i, _)| i)
             .collect();
         let (down, up, enter, esc, left, right) = ctx.input_mut(|i| {
@@ -121,10 +162,10 @@ impl VerseMenu {
                 i.consume_key(Modifiers::NONE, Key::ArrowRight),
             )
         });
-        let open_in_line = lines.iter().position(|l| matches!(l, Line::OpenIn { enabled: true }));
+        let open_in_line = lines.iter().position(|l| matches!(l, Line::OpenIn(true)));
         if let Some(sub) = &mut self.open_in {
             // The submenu has the keyboard: ← or Esc goes back to the menu.
-            let n = APPS.len();
+            let n = order.len();
             if down {
                 *sub = Some(sub.map_or(0, |a| (a + 1) % n));
             }
@@ -132,7 +173,7 @@ impl VerseMenu {
                 *sub = Some(sub.map_or(n - 1, |a| (a + n - 1) % n));
             }
             if enter && let Some(a) = *sub {
-                actions.push(Action::OpenIn(APPS[a].id));
+                actions.push(Action::OpenIn(order[a].id));
                 return true;
             }
             if left || esc {
@@ -152,28 +193,31 @@ impl VerseMenu {
             }
             if (enter || right) && self.highlighted.is_some() && self.highlighted == open_in_line {
                 self.open_in = Some(Some(0));
-            } else if enter
-                && let Some(Line::Item { action: Some(a), .. }) = self.highlighted.and_then(|h| lines.get(h))
-            {
-                actions.push(a.clone());
-                return true;
+            } else if enter {
+                match self.highlighted.and_then(|h| lines.get(h)) {
+                    Some(Line::Item { action: Some(a), .. }) => {
+                        actions.push(a.clone());
+                        return true;
+                    }
+                    Some(Line::Starred(app)) => {
+                        actions.push(Action::OpenIn(app.id));
+                        return true;
+                    }
+                    _ => {}
+                }
             }
         }
 
-        let height = PADDING_Y
-            + tokens::HEADER_HEIGHT
-            + SWATCHES_HEIGHT
-            + SEPARATOR_HEIGHT
-            + lines
-                .iter()
-                .map(|l| if matches!(l, Line::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT })
-                .sum::<f32>()
-            + PADDING_Y;
-        let screen = ctx.content_rect();
-        let pos = pos2(
-            self.pos.x.min(screen.right() - WIDTH - 8.0).max(screen.left() + 8.0),
-            self.pos.y.min(screen.bottom() - height - 8.0).max(screen.top() + 8.0),
-        );
+        let content = ROWS_TOP + lines.iter().map(line_height).sum::<f32>() + PADDING_Y;
+        let (pos, height) = frame(self.pos, content, ctx.content_rect());
+        if self.open_in.is_none()
+            && (down || up)
+            && let Some(h) = self.highlighted
+        {
+            let top = ROWS_TOP + lines[..h].iter().map(line_height).sum::<f32>();
+            self.scroll_y = scroll_to_show(self.scroll_y, top, top + ITEM_HEIGHT, height, content);
+        }
+        self.scroll_y = self.scroll_y.clamp(0.0, content - height);
         let mut close = false;
         let mut open_in_row: Option<Rect> = None;
         let area = egui::Area::new(egui::Id::new("verse-menu")).order(Order::Foreground).fixed_pos(pos).show(
@@ -182,9 +226,15 @@ impl VerseMenu {
                 let rect = Rect::from_min_size(pos, vec2(WIDTH, height));
                 p.shadows.popover.paint(ui.painter(), rect, tokens::RADIUS);
                 ui.painter().rect_filled(rect, tokens::RADIUS, p.surface);
-                let (_, _) = ui.allocate_exact_size(rect.size(), Sense::hover());
+                let (_, resp) = ui.allocate_exact_size(rect.size(), Sense::hover());
+                if content > height && resp.contains_pointer() {
+                    let dy = ui.ctx().input_mut(|i| std::mem::take(&mut i.smooth_scroll_delta.y));
+                    self.scroll_y = (self.scroll_y - dy).clamp(0.0, content - height);
+                }
+                // Rows scrolled out of the menu neither paint nor take the pointer.
+                ui.set_clip_rect(rect);
                 let (left, right) = (rect.left() + PADDING_X, rect.right() - PADDING_X);
-                let mut y = rect.top() + PADDING_Y;
+                let mut y = rect.top() + PADDING_Y - self.scroll_y;
                 // "Highlight", then the swatches and clear.
                 let header = Rect::from_x_y_ranges(left..=right, y..=y + tokens::HEADER_HEIGHT);
                 menu::paint_header(ui.painter(), p, header, "Highlight");
@@ -262,7 +312,33 @@ impl VerseMenu {
                             }
                             y += ITEM_HEIGHT;
                         }
-                        Line::OpenIn { enabled } => {
+                        Line::Starred(app) => {
+                            let r = Rect::from_x_y_ranges(left..=right, y..=y + ITEM_HEIGHT);
+                            let resp = ui.interact(r, ui.id().with(("menu-starred", app.id)), Sense::click());
+                            if resp.hovered() && ui.input(|inp| inp.pointer.delta() != egui::Vec2::ZERO) {
+                                self.highlighted = Some(i);
+                            }
+                            let lit = self.highlighted == Some(i);
+                            let row = menu::Row {
+                                icon: no_icon,
+                                label: app.name,
+                                shortcut: "",
+                                enabled: true,
+                                lit,
+                                pressed: resp.is_pointer_button_down_on(),
+                            };
+                            menu::paint_row(ui.painter(), p, r, row);
+                            // Its filled star unstars it (the row goes) without opening.
+                            let star = star_toggle(ui, p, r, app.id, true, resp.hovered() || lit, lit);
+                            if star.clicked() {
+                                actions.push(Action::ToggleOpenInStar(app.id));
+                            } else if resp.clicked() {
+                                actions.push(Action::OpenIn(app.id));
+                                close = true;
+                            }
+                            y += ITEM_HEIGHT;
+                        }
+                        Line::OpenIn(enabled) => {
                             let r = Rect::from_x_y_ranges(left..=right, y..=y + ITEM_HEIGHT);
                             let sense = if *enabled { Sense::click() } else { Sense::hover() };
                             let resp = ui.interact(r, ui.id().with(("menu-item", i)), sense);
@@ -297,10 +373,11 @@ impl VerseMenu {
         }
         let mut in_submenu = false;
         if let (Some(sub), Some(row)) = (&mut self.open_in, open_in_row) {
-            let (picked, inside) = open_in_submenu(ctx, p, row, pos.x, sub);
+            let starred = &settings.open_in_starred;
+            let (picked, inside) = open_in_submenu(ctx, p, row, pos.x, &order, starred, sub, actions);
             in_submenu = inside;
-            if let Some(a) = picked {
-                actions.push(Action::OpenIn(APPS[a].id));
+            if let Some(app) = picked {
+                actions.push(Action::OpenIn(app.id));
                 close = true;
             }
         }
@@ -314,15 +391,20 @@ impl VerseMenu {
 }
 
 /// Paints the Open in › submenu beside `row` (or left of the menu at `menu_left` when the window
-/// has no room on the right). Returns the app clicked, if any, and whether a click landed inside.
+/// has no room on the right), `order` top to bottom. Returns the app clicked, if any, and whether a
+/// click landed inside. A row's star (shown on hover, kept when starred) stars or unstars it.
+#[allow(clippy::too_many_arguments)]
 fn open_in_submenu(
     ctx: &egui::Context,
     p: &Palette,
     row: Rect,
     menu_left: f32,
+    order: &[App],
+    starred: &[String],
     highlighted: &mut Option<usize>,
-) -> (Option<usize>, bool) {
-    let height = PADDING_Y + APPS.len() as f32 * ITEM_HEIGHT + PADDING_Y;
+    actions: &mut Vec<Action>,
+) -> (Option<App>, bool) {
+    let height = PADDING_Y + order.len() as f32 * ITEM_HEIGHT + PADDING_Y;
     let screen = ctx.content_rect();
     let beside = row.right() + PADDING_X;
     let x = if beside + OPEN_IN_WIDTH + 8.0 <= screen.right() {
@@ -342,10 +424,10 @@ fn open_in_submenu(
             ui.painter().rect_filled(rect, tokens::RADIUS, p.surface);
             let _ = ui.allocate_exact_size(rect.size(), Sense::hover());
             let (left, right) = (rect.left() + PADDING_X, rect.right() - PADDING_X);
-            for (k, app) in APPS.iter().enumerate() {
+            for (k, app) in order.iter().enumerate() {
                 let top = rect.top() + PADDING_Y + k as f32 * ITEM_HEIGHT;
                 let r = Rect::from_x_y_ranges(left..=right, top..=top + ITEM_HEIGHT);
-                let resp = ui.interact(r, ui.id().with(("open-in", k)), Sense::click());
+                let resp = ui.interact(r, ui.id().with(("open-in", app.id)), Sense::click());
                 if resp.hovered() && ui.input(|inp| inp.pointer.delta() != egui::Vec2::ZERO) {
                     *highlighted = Some(k);
                 }
@@ -359,8 +441,13 @@ fn open_in_submenu(
                 let ink = if lit { p.on_accent } else { p.ink };
                 let at = pos2(menu::text_left(r), r.center().y);
                 ui.painter().text(at, Align2::LEFT_CENTER, app.name, text::UI.font(), ink);
-                if resp.clicked() {
-                    picked = Some(k);
+                let is_starred = starred.iter().any(|s| s == app.id);
+                let star =
+                    star_toggle(ui, p, r, app.id, is_starred, is_starred || resp.hovered() || lit, lit);
+                if star.clicked() {
+                    actions.push(Action::ToggleOpenInStar(app.id));
+                } else if resp.clicked() {
+                    picked = Some(*app);
                 }
             }
         });
@@ -370,6 +457,74 @@ fn open_in_submenu(
     (picked, inside)
 }
 
+/// The star at a row's trailing edge: filled when `starred`, drawn only when `visible` or itself
+/// pointed at. Returns its response; the pointing hand shows over it, as it's clickable.
+fn star_toggle(
+    ui: &egui::Ui,
+    p: &Palette,
+    row: Rect,
+    id: &str,
+    starred: bool,
+    visible: bool,
+    lit: bool,
+) -> egui::Response {
+    let star = Rect::from_center_size(
+        pos2(row.right() - tokens::ITEM_PADDING - icon::MENU / 2.0, row.center().y),
+        vec2(icon::MENU, icon::MENU),
+    );
+    let hit = ui.interact(star.expand(4.0), ui.id().with(("open-in-star", id)), Sense::click());
+    if visible || hit.hovered() {
+        let ink = match (lit, hit.hovered()) {
+            (true, _) => p.on_accent,
+            (false, true) => p.ink,
+            (false, false) => p.ink_3,
+        };
+        icons::heavy(|| icons::star(ui.painter(), star, ink, starred));
+    }
+    crate::widgets::pointer_on_hover(ui, &hit);
+    hit
+}
+
+fn no_icon(_: &Painter, _: Rect, _: Color32) {}
+
 fn bookmark(p: &Painter, r: Rect, c: Color32) {
     icons::bookmark(p, r, c, false);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_menu_taller_than_the_window_fits_it_and_scrolls() {
+        let screen = Rect::from_min_size(Pos2::ZERO, vec2(620.0, 420.0));
+        // Ten stars: about 610 pt of rows in a 420 pt window.
+        let (pos, height) = frame(pos2(300.0, 200.0), 610.0, screen);
+        assert_eq!((pos.y, height), (8.0, 404.0));
+        // A short menu keeps its height and only moves up to fit.
+        assert_eq!(frame(pos2(300.0, 300.0), 330.0, screen), (pos2(300.0, 82.0), 330.0));
+        // Arrowing to the last row scrolls it into view, but never past the end.
+        let last = 610.0 - PADDING_Y;
+        assert_eq!(scroll_to_show(0.0, last - ITEM_HEIGHT, last, 404.0, 610.0), 206.0);
+        // Back to the first row scrolls to the top; a visible row leaves the scroll alone.
+        assert_eq!(scroll_to_show(206.0, ROWS_TOP, ROWS_TOP + ITEM_HEIGHT, 404.0, 610.0), 0.0);
+        assert_eq!(scroll_to_show(40.0, 200.0, 200.0 + ITEM_HEIGHT, 404.0, 610.0), 40.0);
+    }
+
+    #[test]
+    fn stars_persist_in_settings() {
+        let mut settings = crate::app::Settings::default();
+        open_in::toggle_star(&mut settings.open_in_starred, "logos");
+        open_in::toggle_star(&mut settings.open_in_starred, "chatgpt");
+        let json = serde_json::to_string(&settings).unwrap();
+        let back: crate::app::Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.open_in_starred, ["logos", "chatgpt"]);
+        assert_eq!(
+            open_in::menu_order(&back.open_in_starred)[..2].iter().map(|a| a.id).collect::<Vec<_>>(),
+            ["logos", "chatgpt"]
+        );
+        // Settings saved before stars existed load with none.
+        let old: crate::app::Settings = serde_json::from_str("{\"translation\":\"kjv\"}").unwrap();
+        assert!(old.open_in_starred.is_empty());
+    }
 }
