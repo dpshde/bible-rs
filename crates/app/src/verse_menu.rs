@@ -6,17 +6,56 @@ use bible_core::open_in::{self, App, Passage};
 use bible_core::study::{HighlightColor, StudyStore};
 use eframe::egui::{self, Color32, Key, Modifiers, Order, Painter, Pos2, Rect, Sense, Stroke, pos2, vec2};
 
+use eframe::egui::text::{LayoutJob, TextFormat, TextWrapping};
+
 use crate::actions::Action;
 use crate::icons;
 use crate::menu::{self, ITEM_HEIGHT, PADDING_X, PADDING_Y, SEPARATOR_HEIGHT};
-use crate::theme::{Palette, icon, menu as tokens};
+use crate::theme::{Palette, icon, menu as tokens, text};
 use crate::widgets::IconFn;
 
 const WIDTH: f32 = 264.0;
 /// The swatch row under the header: 20 pt swatches, 10 pt apart, 6 pt above and 8 below.
 const SWATCHES_HEIGHT: f32 = 34.0;
-/// The Open in › submenu: one text row per app.
-const OPEN_IN_WIDTH: f32 = 200.0;
+/// The Open in › submenu's width bounds; between them it fits its longest label.
+const OPEN_IN_MIN_WIDTH: f32 = 180.0;
+const OPEN_IN_MAX_WIDTH: f32 = 280.0;
+/// Kept free at the right of every app row, starred or not: the star and a gap before it.
+const STAR_SLOT: f32 = icon::MENU + tokens::ITEM_PADDING;
+
+/// The submenu width that fits a row's globe, a `label` wide label and the star slot.
+fn open_in_width(label: f32) -> f32 {
+    let row = tokens::ITEM_PADDING + icon::MENU + tokens::ICON_GAP + label + STAR_SLOT + tokens::ITEM_PADDING;
+    (2.0 * PADDING_X + row).clamp(OPEN_IN_MIN_WIDTH, OPEN_IN_MAX_WIDTH)
+}
+
+/// An app row: the globe, then the name, cut short with "…" before the star slot.
+fn paint_app_row(painter: &Painter, p: &Palette, r: Rect, name: &str, lit: bool, pressed: bool) {
+    if lit {
+        painter.rect_filled(r, tokens::ITEM_RADIUS, p.accent);
+        if pressed {
+            painter.rect_filled(r, tokens::ITEM_RADIUS, Color32::from_black_alpha(18));
+        }
+    }
+    let (ink, ink2) = if lit { (p.on_accent, p.on_accent) } else { (p.ink, p.ink_2) };
+    let cy = r.center().y;
+    let glyph =
+        Rect::from_min_size(pos2(menu::text_left(r), cy - icon::MENU / 2.0), vec2(icon::MENU, icon::MENU));
+    icons::heavy(|| icons::globe(painter, glyph, ink2));
+    let left = glyph.right() + tokens::ICON_GAP;
+    let mut job = LayoutJob::single_section(
+        name.to_string(),
+        TextFormat { font_id: text::UI.font(), color: ink, ..Default::default() },
+    );
+    job.wrap = TextWrapping {
+        max_width: r.right() - tokens::ITEM_PADDING - STAR_SLOT - left,
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    let galley = painter.layout_job(job);
+    painter.galley(pos2(left, cy - galley.size().y / 2.0), galley, ink);
+}
 
 enum Line {
     Item {
@@ -317,15 +356,8 @@ impl VerseMenu {
                                 self.highlighted = Some(i);
                             }
                             let lit = self.highlighted == Some(i);
-                            let row = menu::Row {
-                                icon: icons::globe,
-                                label: app.name,
-                                shortcut: "",
-                                enabled: true,
-                                lit,
-                                pressed: resp.is_pointer_button_down_on(),
-                            };
-                            menu::paint_row(ui.painter(), p, r, row);
+                            let pressed = resp.is_pointer_button_down_on();
+                            paint_app_row(ui.painter(), p, r, app.name, lit, pressed);
                             // Its filled star unstars it (the row goes) without opening.
                             let star = star_toggle(ui, p, r, app.id, true, resp.hovered() || lit, lit);
                             if star.clicked() {
@@ -403,12 +435,19 @@ fn open_in_submenu(
     actions: &mut Vec<Action>,
 ) -> (Option<App>, bool) {
     let height = PADDING_Y + order.len() as f32 * ITEM_HEIGHT + PADDING_Y;
+    let longest = ctx.fonts_mut(|f| {
+        order
+            .iter()
+            .map(|a| f.layout_no_wrap(a.name.to_string(), text::UI.font(), p.ink).size().x)
+            .fold(0.0, f32::max)
+    });
+    let width = open_in_width(longest);
     let screen = ctx.content_rect();
     let beside = row.right() + PADDING_X;
-    let x = if beside + OPEN_IN_WIDTH + 8.0 <= screen.right() {
+    let x = if beside + width + 8.0 <= screen.right() {
         beside
     } else {
-        (menu_left - OPEN_IN_WIDTH).max(screen.left() + 8.0)
+        (menu_left - width).max(screen.left() + 8.0)
     };
     let y = (row.top() - PADDING_Y).min(screen.bottom() - height - 8.0).max(screen.top() + 8.0);
     let pos = pos2(x, y);
@@ -417,7 +456,7 @@ fn open_in_submenu(
         .order(Order::Foreground)
         .fixed_pos(pos)
         .show(ctx, |ui| {
-            let rect = Rect::from_min_size(pos, vec2(OPEN_IN_WIDTH, height));
+            let rect = Rect::from_min_size(pos, vec2(width, height));
             p.shadows.popover.paint(ui.painter(), rect, tokens::RADIUS);
             ui.painter().rect_filled(rect, tokens::RADIUS, p.surface);
             let _ = ui.allocate_exact_size(rect.size(), Sense::hover());
@@ -430,15 +469,7 @@ fn open_in_submenu(
                     *highlighted = Some(k);
                 }
                 let lit = *highlighted == Some(k);
-                let row = menu::Row {
-                    icon: icons::globe,
-                    label: app.name,
-                    shortcut: "",
-                    enabled: true,
-                    lit,
-                    pressed: resp.is_pointer_button_down_on(),
-                };
-                menu::paint_row(ui.painter(), p, r, row);
+                paint_app_row(ui.painter(), p, r, app.name, lit, resp.is_pointer_button_down_on());
                 let is_starred = starred.iter().any(|s| s == app.id);
                 let star =
                     star_toggle(ui, p, r, app.id, is_starred, is_starred || resp.hovered() || lit, lit);
@@ -505,6 +536,16 @@ mod tests {
         // Back to the first row scrolls to the top; a visible row leaves the scroll alone.
         assert_eq!(scroll_to_show(206.0, ROWS_TOP, ROWS_TOP + ITEM_HEIGHT, 404.0, 610.0), 0.0);
         assert_eq!(scroll_to_show(40.0, 200.0, 200.0 + ITEM_HEIGHT, 404.0, 610.0), 40.0);
+    }
+
+    #[test]
+    fn the_submenu_fits_its_labels_and_keeps_the_star_slot() {
+        // Room for padding, globe, gap, label and star slot, every time.
+        let extra = 2.0 * PADDING_X + 2.0 * tokens::ITEM_PADDING + icon::MENU + tokens::ICON_GAP + STAR_SLOT;
+        assert_eq!(open_in_width(130.0), 130.0 + extra);
+        // Short labels keep a usable width; very long ones stop at the max (and are cut with "…").
+        assert_eq!(open_in_width(10.0), OPEN_IN_MIN_WIDTH);
+        assert_eq!(open_in_width(1000.0), OPEN_IN_MAX_WIDTH);
     }
 
     #[test]
