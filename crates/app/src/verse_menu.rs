@@ -4,14 +4,12 @@
 use bible_core::VerseRef;
 use bible_core::open_in::{self, App, Passage};
 use bible_core::study::{HighlightColor, StudyStore};
-use eframe::egui::{
-    self, Align2, Color32, Key, Modifiers, Order, Painter, Pos2, Rect, Sense, Stroke, pos2, vec2,
-};
+use eframe::egui::{self, Color32, Key, Modifiers, Order, Painter, Pos2, Rect, Sense, Stroke, pos2, vec2};
 
 use crate::actions::Action;
 use crate::icons;
 use crate::menu::{self, ITEM_HEIGHT, PADDING_X, PADDING_Y, SEPARATOR_HEIGHT};
-use crate::theme::{Palette, icon, menu as tokens, text};
+use crate::theme::{Palette, icon, menu as tokens};
 use crate::widgets::IconFn;
 
 const WIDTH: f32 = 264.0;
@@ -320,7 +318,7 @@ impl VerseMenu {
                             }
                             let lit = self.highlighted == Some(i);
                             let row = menu::Row {
-                                icon: no_icon,
+                                icon: icons::globe,
                                 label: app.name,
                                 shortcut: "",
                                 enabled: true,
@@ -432,15 +430,15 @@ fn open_in_submenu(
                     *highlighted = Some(k);
                 }
                 let lit = *highlighted == Some(k);
-                if lit {
-                    ui.painter().rect_filled(r, tokens::ITEM_RADIUS, p.accent);
-                    if resp.is_pointer_button_down_on() {
-                        ui.painter().rect_filled(r, tokens::ITEM_RADIUS, Color32::from_black_alpha(18));
-                    }
-                }
-                let ink = if lit { p.on_accent } else { p.ink };
-                let at = pos2(menu::text_left(r), r.center().y);
-                ui.painter().text(at, Align2::LEFT_CENTER, app.name, text::UI.font(), ink);
+                let row = menu::Row {
+                    icon: icons::globe,
+                    label: app.name,
+                    shortcut: "",
+                    enabled: true,
+                    lit,
+                    pressed: resp.is_pointer_button_down_on(),
+                };
+                menu::paint_row(ui.painter(), p, r, row);
                 let is_starred = starred.iter().any(|s| s == app.id);
                 let star =
                     star_toggle(ui, p, r, app.id, is_starred, is_starred || resp.hovered() || lit, lit);
@@ -484,8 +482,6 @@ fn star_toggle(
     crate::widgets::pointer_on_hover(ui, &hit);
     hit
 }
-
-fn no_icon(_: &Painter, _: Rect, _: Color32) {}
 
 fn bookmark(p: &Painter, r: Rect, c: Color32) {
     icons::bookmark(p, r, c, false);
