@@ -383,7 +383,7 @@ Store Connect asks for.
 
 ## Web
 
-[bible.rasmic.xyz/read](https://bible.rasmic.xyz/read) is the Mac app in a browser: the same
+[simplymybible.com/read](https://simplymybible.com/read) is the Mac app in a browser: the same
 typesetting, themes, palette, search, study tools, pages and shortcuts, with the core compiled to
 WebAssembly. Every chapter of every bundled translation is also a static page
 (`/read/kjv/john/3`). [Importing](#import-a-translation-you-own) works as on the Mac, with the same
@@ -421,4 +421,7 @@ data format, search, and the licensing approach.
 ## License
 
 Code: MIT ([LICENSE](LICENSE)). Bundled translations: public domain ([LICENSES/](LICENSES/README.md)).
-Fonts: Literata and Inter, SIL Open Font License 1.1.
+Fonts: Literata and Inter, SIL Open Font License 1.1. The object specs in `objects/` and the images
+rendered from their 3D models are CC BY 4.0 ([objects/LICENSE](objects/LICENSE)). Credit them as:
+
+> Ark of the Covenant specs and 3D models © 2026 Micky (github.com/michaelshimeles) / bible-rs contributors, licensed CC BY 4.0, https://github.com/michaelshimeles/bible-rs

@@ -23,12 +23,12 @@
 	let field = $state<HTMLInputElement>();
 	let currentRow = $state<HTMLElement>();
 
-	const books = $derived(app.core?.books ?? []);
+	const books = $derived(app.books);
 	const reading = $derived(app.page === 'reader');
 	const currentBook = $derived(books.findLast((b) => b.firstChapter <= app.here.chapter)?.index ?? -1);
 	const counts = $derived(app.counts());
 	const activePlans = $derived(app.plans().filter((p) => p.finished === null).length);
-	const abbrev = $derived(app.info(app.settings.translation)?.abbrev ?? '');
+	const abbrev = $derived(app.info(app.textTranslation())?.abbrev ?? '');
 	const filter = $derived(st.filter.trim().toLowerCase());
 	const testaments = $derived(
 		(['Old Testament', 'New Testament'] as const).map((label, t) => ({
@@ -240,6 +240,7 @@
 							marks={marked?.marks}
 							title={marked && summary(marked)}
 							selected
+							href={app.bookHref(b)}
 							onclick={() => pickBook(b)}
 						/>
 					{:else}
@@ -248,6 +249,7 @@
 							indent={24}
 							marks={marked?.marks}
 							title={marked && summary(marked)}
+							href={app.bookHref(b)}
 							onclick={() => pickBook(b)}
 						/>
 					{/if}
@@ -256,6 +258,7 @@
 							book={b}
 							current={app.here.chapter}
 							activity={activity.chapters}
+							href={(chapter) => app.chapterHref(chapter)}
 							onpick={(chapter) => app.dispatch({ type: 'jump', chapter })}
 						/>
 					{/if}
