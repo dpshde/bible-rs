@@ -42,7 +42,7 @@ fn globe_tint(p: &Palette, app: &App) -> Color32 {
 }
 
 /// How much of the brand colour goes into a globe; the rest is the muted icon ink.
-const GLOBE_BRAND_SHARE: f32 = 0.4;
+const GLOBE_BRAND_SHARE: f32 = 0.35;
 
 /// `a` moved `t` of the way to `b`.
 fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
