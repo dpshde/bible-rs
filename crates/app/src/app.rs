@@ -860,11 +860,11 @@ impl BibleApp {
                 }
             }
             Action::OpenIn(id) => {
-                // Words chosen in a parallel column go in that column's translation, as copying does.
-                let translation =
-                    self.reader.text_span().map_or(self.settings.translation.as_str(), |(_, t)| t);
+                let abbrev = |id: &str| self.library.get(id).map(|e| e.meta.abbrev.clone());
+                let span = self.reader.text_span().map(|(_, t)| t);
+                let translation = open_in_translation(abbrev, &self.settings.translation, span);
                 let passage = bible_core::open_in::Passage::from_refs(&self.reader.selected_refs());
-                if let Some(url) = passage.and_then(|p| bible_core::open_in::url(id, p, translation)) {
+                if let Some(url) = passage.and_then(|p| bible_core::open_in::url(id, p, &translation)) {
                     open_url(&url);
                 }
             }
@@ -2890,6 +2890,50 @@ pub fn online_counter() -> Arc<AtomicU64> {
 
 pub fn bump(counter: &AtomicU64) {
     counter.fetch_add(1, Ordering::Relaxed);
+}
+
+/// The translation code Open in › sends: the abbreviation of the library entry the selection is
+/// in (a parallel column's for words chosen there, else the reader's), not its id, which can be
+/// `api-kjv` or a second import's `kjv-2`. The id itself if the entry is gone.
+fn open_in_translation(abbrev: impl Fn(&str) -> Option<String>, reader: &str, span: Option<&str>) -> String {
+    let id = span.unwrap_or(reader);
+    abbrev(id).unwrap_or_else(|| id.to_string())
+}
+
+#[cfg(test)]
+mod open_in_tests {
+    use super::*;
+    use bible_core::books::{BookId, VerseRef};
+    use bible_core::open_in::{Passage, url};
+
+    fn abbrev(id: &str) -> Option<String> {
+        match id {
+            "api-kjv" | "kjv-2" | "kjv" => Some("KJV".into()),
+            "web" => Some("WEB".into()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn open_in_sends_the_translations_abbreviation_not_its_id() {
+        let p = Passage::from_refs(&[VerseRef::new(BookId::from_code("JHN").unwrap(), 3, 16)]).unwrap();
+        for id in ["api-kjv", "kjv-2"] {
+            let t = open_in_translation(abbrev, id, None);
+            assert_eq!(
+                url("bible-app", p, &t).unwrap(),
+                "https://www.bible.com/bible/1/JHN.3.16.KJV",
+                "{id}"
+            );
+        }
+        // Words chosen in a parallel column go in that column's translation.
+        assert_eq!(open_in_translation(abbrev, "api-kjv", Some("web")), "WEB");
+        assert_eq!(
+            url("bible-app", p, &open_in_translation(abbrev, "kjv", Some("web"))).unwrap(),
+            "https://www.bible.com/bible/206/JHN.3.16.WEBUS"
+        );
+        // An entry no longer in the library falls back to its id.
+        assert_eq!(open_in_translation(abbrev, "gone", None), "gone");
+    }
 }
 
 #[cfg(test)]
